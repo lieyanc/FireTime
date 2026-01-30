@@ -4,12 +4,14 @@ import { useUser } from "@/components/user-provider";
 import { useDayData } from "@/hooks/use-day-data";
 import { useSettings } from "@/hooks/use-settings";
 import { useGlobalTodos } from "@/hooks/use-global-todos";
+import { useDailyCheckIns, useDailyTasks } from "@/hooks/use-daily-tasks";
 import { useClock } from "@/hooks/use-clock";
 import { getToday, formatDisplayDate } from "@/lib/dates";
 import { VacationProgress } from "@/components/vacation-progress";
 import { DualScheduleView } from "@/components/dual-schedule-view";
 import { DualTodoList } from "@/components/dual-todo-list";
 import { HomeworkManager } from "@/components/homework-manager";
+import { DailyPKView, DailyTaskManager } from "@/components/daily-checkin";
 import { Skeleton } from "@/components/ui/skeleton";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
@@ -20,12 +22,14 @@ export default function DashboardPage() {
   const { dayData, isLoading: dayLoading } = useDayData(today, "user1");
   const { settings, isLoading: settingsLoading, updateSubjects } = useSettings();
   const { todos, isLoading: todosLoading, addTodo, cycleTodoStatus, deleteTodo } = useGlobalTodos();
+  const { tasks: dailyTasks, addTask, removeTask, editTask } = useDailyTasks();
+  const { checkIns, streaks, tasks: checkInTasks, isLoading: checkInsLoading } = useDailyCheckIns(today);
   const currentTime = useClock();
 
   const user1 = users.find((u) => u.id === "user1") || { id: "user1" as const, name: "用户 1" };
   const user2 = users.find((u) => u.id === "user2") || { id: "user2" as const, name: "用户 2" };
 
-  const isLoading = dayLoading || settingsLoading || todosLoading;
+  const isLoading = dayLoading || settingsLoading || todosLoading || checkInsLoading;
 
   if (isLoading) {
     return (
@@ -52,15 +56,22 @@ export default function DashboardPage() {
           <h1 className="text-2xl font-bold">你好, {currentUser?.name}</h1>
           <p className="text-muted-foreground">{formatDisplayDate(today)}</p>
         </div>
-        <Link href={`/day/${today}`}>
-          <Badge variant="outline" className="text-sm cursor-pointer hover:bg-accent">
-            管理今日时间表
-          </Badge>
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link href="/checkin">
+            <Badge variant="default" className="text-sm cursor-pointer">
+              每日打卡
+            </Badge>
+          </Link>
+          <Link href={`/day/${today}`}>
+            <Badge variant="outline" className="text-sm cursor-pointer hover:bg-accent">
+              管理时间表
+            </Badge>
+          </Link>
+        </div>
       </div>
 
       {/* 顶部统计 */}
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-4 md:grid-cols-3">
         {/* 假期进度 + 考试倒计时 */}
         {settings?.vacation && (
           <VacationProgress vacation={settings.vacation} exams={settings.exams} />
@@ -74,6 +85,18 @@ export default function DashboardPage() {
             compact
           />
         )}
+
+        {/* 每日打卡PK */}
+        <DailyPKView
+          user1={user1}
+          user2={user2}
+          tasks={checkInTasks}
+          checkIns1={checkIns.user1}
+          checkIns2={checkIns.user2}
+          streak1={streaks.user1}
+          streak2={streaks.user2}
+          subjects={settings?.subjects}
+        />
       </div>
 
       {/* 主要内容：双人时间表 + 待办列表 */}

@@ -1,36 +1,146 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# FireTime
 
-## Getting Started
+一个双人时间管理应用，帮助两位用户管理每日日程、待办事项、作业进度和考试倒计时。
 
-First, run the development server:
+## 功能特性
+
+- **双人日程管理** — 两位用户各自维护独立的每日时间表，可互相查看
+- **待办事项** — 支持待办状态循环（待做 → 进行中 → 已完成）
+- **假期进度** — 可视化假期剩余天数
+- **作业跟踪** — 按学科管理作业完成进度
+- **考试倒计时** — 追踪重要考试日期
+- **日程模板** — 新建日程时自动应用默认模板
+- **日历视图** — 按月查看历史日程完成情况
+- **沉浸时钟** — 专注模式时钟界面
+
+## 技术栈
+
+- **框架**: Next.js 16 (App Router)
+- **语言**: TypeScript
+- **样式**: Tailwind CSS 4
+- **UI 组件**: Radix UI + shadcn/ui
+- **数据获取**: SWR
+- **数据存储**: JSON 文件（本地文件系统）
+
+## 快速开始
+
+### 环境要求
+
+- Node.js 20+
+- npm / pnpm / yarn
+
+### 安装
+
+```bash
+git clone <repo-url>
+cd FireTime
+npm install
+```
+
+### 开发
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+打开 http://localhost:3000 访问应用。
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### 构建
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm run build
+npm run start
+```
 
-## Learn More
+## 项目结构
 
-To learn more about Next.js, take a look at the following resources:
+```
+FireTime/
+├── app/                    # Next.js App Router 页面
+│   ├── api/                # API 路由
+│   │   ├── days/[date]/    # 日数据 CRUD
+│   │   ├── todos/          # 待办事项
+│   │   ├── settings/       # 应用设置
+│   │   ├── templates/      # 日程模板
+│   │   └── users/          # 用户信息
+│   └── (app)/              # 页面路由组
+│       ├── dashboard/      # 主面板
+│       ├── day/[date]/     # 单日详情
+│       ├── calendar/       # 日历视图
+│       ├── clock/          # 沉浸时钟
+│       ├── pk/             # 双人对比
+│       ├── assign/         # 任务分配
+│       └── settings/       # 设置
+├── components/             # React 组件
+│   └── ui/                 # shadcn/ui 基础组件
+├── hooks/                  # 自定义 Hooks
+├── lib/                    # 工具函数和类型
+│   ├── store.ts            # 数据存储层
+│   ├── types.ts            # TypeScript 类型定义
+│   ├── dates.ts            # 日期工具函数
+│   └── utils.ts            # 通用工具
+└── data/                   # 数据存储目录
+    ├── users.json          # 用户信息
+    ├── settings.json       # 应用设置
+    ├── templates.json      # 日程模板
+    ├── todos.json          # 全局待办
+    └── days/               # 每日数据
+        └── YYYY-MM-DD.json
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## 数据存储
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+应用使用 JSON 文件作为数据库，所有数据存储在 `data/` 目录下：
 
-## Deploy on Vercel
+| 文件 | 说明 |
+|------|------|
+| `users.json` | 用户名称配置 |
+| `settings.json` | 假期、学科、考试设置 |
+| `templates.json` | 日程模板 |
+| `todos.json` | 双人待办事项 |
+| `days/*.json` | 每日日程和任务数据 |
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+首次运行时会自动生成默认数据。
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## 部署
+
+### 方式一：VPS / 服务器
+
+```bash
+npm install
+npm run build
+npm run start
+```
+
+使用 PM2 保持进程：
+
+```bash
+pm2 start npm --name firetime -- start
+```
+
+### 方式二：Docker
+
+```dockerfile
+FROM node:20-alpine
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci
+COPY . .
+RUN npm run build
+EXPOSE 3000
+CMD ["npm", "start"]
+```
+
+运行时挂载数据目录：
+
+```bash
+docker run -v /path/to/data:/app/data -p 3000:3000 firetime
+```
+
+### 注意事项
+
+由于使用文件系统存储数据，**不支持部署到 Vercel/Netlify 等 Serverless 平台**（文件系统只读或临时）。如需部署到这些平台，需要将 `lib/store.ts` 改为使用数据库（如 SQLite、PostgreSQL、Redis 等）。
+
+## License
+
+GPL-3.0

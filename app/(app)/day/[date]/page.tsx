@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ChevronLeft, ChevronRight, ListTodo, Circle, Play, CheckCircle2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, ListTodo, Circle, Play, CheckCircle2, Loader2 } from "lucide-react";
 import type { TodoStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -29,14 +29,15 @@ const statusConfig: Record<TodoStatus, { icon: typeof Circle; color: string }> =
 export default function DayPage({ params }: PageProps) {
   const { date } = use(params);
   const { currentUserId, currentUser } = useUser();
-  const { schedule, isLoading: dayLoading, updateSchedule } = useDayData(date, currentUserId);
+  const { schedule, isLoading: dayLoading, isValidating, updateSchedule } = useDayData(date, currentUserId);
   const { todos, isLoading: todosLoading, cycleTodoStatus, linkTodoToBlock } = useGlobalTodos();
   const { currentBlock } = useCurrentBlock(schedule);
 
   const prevDate = addDays(date, -1);
   const nextDate = addDays(date, 1);
 
-  const isLoading = dayLoading || todosLoading;
+  // 只在首次加载（没有缓存数据）时显示骨架屏
+  const showSkeleton = (dayLoading && schedule.length === 0) || todosLoading;
 
   // 获取当前用户的待办
   const userTodos = currentUserId ? todos[currentUserId] : [];
@@ -46,7 +47,7 @@ export default function DayPage({ params }: PageProps) {
   const pendingTodos = userTodos.filter((t) => t.status === "pending");
   const completedTodos = userTodos.filter((t) => t.status === "completed");
 
-  if (isLoading) {
+  if (showSkeleton) {
     return (
       <div className="space-y-4">
         <Skeleton className="h-8 w-64" />
@@ -71,6 +72,9 @@ export default function DayPage({ params }: PageProps) {
           <div className="flex items-center gap-2">
             <h1 className="text-xl font-bold">{formatDisplayDate(date)}</h1>
             {isToday(date) && <Badge variant="default" className="text-xs">今天</Badge>}
+            {isValidating && (
+              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+            )}
           </div>
           <Link href={`/day/${nextDate}`}>
             <Button variant="ghost" size="icon" className="h-8 w-8">
@@ -82,7 +86,10 @@ export default function DayPage({ params }: PageProps) {
       </div>
 
       {/* 主要内容 */}
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className={cn(
+        "grid gap-4 lg:grid-cols-3 transition-opacity duration-200",
+        isValidating && "opacity-60"
+      )}>
         {/* 左侧：紧凑时间轴 */}
         <div className="lg:col-span-2">
           <CompactTimeline

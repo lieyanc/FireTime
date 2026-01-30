@@ -121,3 +121,54 @@ export interface TodoListResponse {
 
 // Day status for calendar coloring
 export type DayStatus = "complete" | "partial" | "incomplete" | "unplanned";
+
+// 每日固定任务（打卡任务）
+export interface DailyTask {
+  id: string;
+  title: string;
+  target: number; // 每日目标量
+  unit: string; // 单位 (页、词、题、分钟等)
+  subjectId?: string; // 关联学科
+  homeworkId?: string; // 关联作业项（完成打卡时自动累加到作业进度）
+  icon?: string; // 图标名称
+}
+
+// 每日打卡记录
+export interface DailyCheckIn {
+  taskId: string;
+  completed: boolean;
+  amount: number; // 实际完成量
+  completedAt?: string; // 完成时间
+}
+
+// 用户每日打卡数据
+export interface UserDailyCheckIns {
+  user1: DailyCheckIn[];
+  user2: DailyCheckIn[];
+}
+
+// 每日打卡存储结构
+export interface DailyCheckInData {
+  date: string;
+  checkIns: UserDailyCheckIns;
+}
+
+// 每日任务列表
+export interface DailyTaskList {
+  tasks: DailyTask[];
+}
+
+// PK统计
+export interface PKStats {
+  date: string;
+  user1: {
+    completed: number;
+    total: number;
+    streak: number; // 连续打卡天数
+  };
+  user2: {
+    completed: number;
+    total: number;
+    streak: number;
+  };
+}

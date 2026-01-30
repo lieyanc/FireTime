@@ -6,10 +6,14 @@ import type {
   GlobalTodoList,
   ScheduleTemplate,
   User,
+  DailyTaskList,
+  DailyCheckInData,
+  UserDailyCheckIns,
 } from "./types";
 
 const DATA_DIR = path.join(process.cwd(), "data");
 const DAYS_DIR = path.join(DATA_DIR, "days");
+const CHECKINS_DIR = path.join(DATA_DIR, "checkins");
 
 // Ensure data directories exist
 function ensureDataDirs() {
@@ -18,6 +22,9 @@ function ensureDataDirs() {
   }
   if (!fs.existsSync(DAYS_DIR)) {
     fs.mkdirSync(DAYS_DIR, { recursive: true });
+  }
+  if (!fs.existsSync(CHECKINS_DIR)) {
+    fs.mkdirSync(CHECKINS_DIR, { recursive: true });
   }
 }
 
@@ -247,4 +254,91 @@ export function getMonthDayData(year: number, month: number): DayData[] {
   const monthDates = allDates.filter((d) => d.startsWith(monthPrefix));
 
   return monthDates.map((date) => getDayData(date));
+}
+
+// Daily Tasks (每日固定打卡任务)
+export function getDailyTasks(): DailyTaskList {
+  ensureDataDirs();
+  const filePath = path.join(DATA_DIR, "daily-tasks.json");
+  if (!fs.existsSync(filePath)) {
+    const defaults: DailyTaskList = {
+      tasks: [
+        { id: "dt-1", title: "背单词", target: 50, unit: "词", subjectId: "english", homeworkId: "english-1" },
+        { id: "dt-2", title: "数学练习", target: 2, unit: "页", subjectId: "math", homeworkId: "math-1" },
+        { id: "dt-3", title: "语文阅读", target: 1, unit: "篇", subjectId: "chinese", homeworkId: "chinese-1" },
+        { id: "dt-4", title: "物理刷题", target: 2, unit: "页", subjectId: "physics", homeworkId: "physics-1" },
+        { id: "dt-5", title: "化学练习", target: 1, unit: "篇", subjectId: "chemistry", homeworkId: "chemistry-1" },
+        { id: "dt-6", title: "课外阅读", target: 30, unit: "分钟" },
+      ],
+    };
+    fs.writeFileSync(filePath, JSON.stringify(defaults, null, 2));
+    return defaults;
+  }
+  return JSON.parse(fs.readFileSync(filePath, "utf-8"));
+}
+
+export function saveDailyTasks(data: DailyTaskList): void {
+  ensureDataDirs();
+  const filePath = path.join(DATA_DIR, "daily-tasks.json");
+  fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
+}
+
+// Daily Check-ins (每日打卡记录)
+export function getDailyCheckIns(date: string): DailyCheckInData {
+  ensureDataDirs();
+  const filePath = path.join(CHECKINS_DIR, `${date}.json`);
+  if (!fs.existsSync(filePath)) {
+    const empty: DailyCheckInData = {
+      date,
+      checkIns: { user1: [], user2: [] },
+    };
+    return empty;
+  }
+  return JSON.parse(fs.readFileSync(filePath, "utf-8"));
+}
+
+export function saveDailyCheckIns(data: DailyCheckInData): void {
+  ensureDataDirs();
+  const filePath = path.join(CHECKINS_DIR, `${data.date}.json`);
+  fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
+}
+
+// 获取所有打卡日期
+export function getAllCheckInDates(): string[] {
+  ensureDataDirs();
+  if (!fs.existsSync(CHECKINS_DIR)) return [];
+  return fs.readdirSync(CHECKINS_DIR)
+    .filter((f) => f.endsWith(".json"))
+    .map((f) => f.replace(".json", ""))
+    .sort();
+}
+
+// 计算连续打卡天数
+export function getStreak(userId: "user1" | "user2", today: string): number {
+  const dates = getAllCheckInDates().reverse(); // 从最新日期开始
+  const tasks = getDailyTasks();
+  const totalTasks = tasks.tasks.length;
+  if (totalTasks === 0) return 0;
+
+  let streak = 0;
+  // 从今天往前逐天检查
+  const todayDate = new Date(today);
+  for (let i = 0; i < 365; i++) {
+    const checkDate = new Date(todayDate);
+    checkDate.setDate(checkDate.getDate() - i);
+    const dateStr = checkDate.toISOString().split("T")[0];
+
+    const data = getDailyCheckIns(dateStr);
+    const userCheckIns = data.checkIns[userId];
+    const completedCount = userCheckIns.filter((c) => c.completed).length;
+
+    if (completedCount >= totalTasks) {
+      streak++;
+    } else {
+      // 如果是今天且还没全部完成，不断连续
+      if (i === 0) continue;
+      break;
+    }
+  }
+  return streak;
 }

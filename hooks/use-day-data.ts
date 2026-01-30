@@ -4,9 +4,10 @@ import type { DayData, Task, TimeBlock, UserId } from "@/lib/types";
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
 export function useDayData(date: string, userId: UserId) {
-  const { data, error, isLoading, mutate } = useSWR<{ data: DayData }>(
+  const { data, error, isLoading, isValidating, mutate } = useSWR<{ data: DayData }>(
     `/api/days/${date}`,
-    fetcher
+    fetcher,
+    { keepPreviousData: true }
   );
 
   const dayData = data?.data;
@@ -36,6 +37,7 @@ export function useDayData(date: string, userId: UserId) {
     schedule: userData?.schedule || [],
     tasks: userData?.tasks || [],
     isLoading,
+    isValidating,
     error,
     mutate,
     updateSchedule,

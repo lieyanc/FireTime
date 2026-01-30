@@ -12,6 +12,7 @@ import {
   UserRound,
   ArrowLeftRight,
   Link2,
+  ClipboardCheck,
 } from "lucide-react";
 import {
   Sidebar,
@@ -47,6 +48,7 @@ export function AppSidebar() {
   const navItems = [
     { title: "仪表盘", icon: LayoutDashboard, href: "/dashboard" },
     { title: "今日", icon: CalendarDays, href: today ? `/day/${today}` : "/dashboard" },
+    { title: "每日打卡", icon: ClipboardCheck, href: "/checkin" },
     { title: "任务分配", icon: Link2, href: "/assign" },
     { title: "月历", icon: CalendarDays, href: "/calendar" },
     { title: "时钟", icon: Clock, href: "/clock" },
