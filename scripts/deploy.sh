@@ -1,456 +1,217 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 
-# FireTime Deploy Script
-# 用法:
-#   ./deploy.sh          # 手动部署（首次运行会启动配置向导）
-#   ./deploy.sh check    # 仅检查是否有更新
-#   ./deploy.sh auto     # 自动模式：检查更新并部署（静默，适合 cron/面板）
+# FireTime 部署脚本
+# 用法: ./deploy.sh [--update-only | --run-only]
+#   无参数: 自更新 → 下载最新构建 → 启动服务
+#   --update-only: 仅自更新脚本并下载构建产物，不启动服务
+#   --run-only: 仅启动已存在的构建产物，不下载
 
-set -e
+REPO="lieyanc/FireTime"
+ARTIFACT_NAME="firetime-standalone"
+SCRIPT_SOURCE_URL="https://raw.githubusercontent.com/${REPO}/master/scripts/deploy.sh"
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CONFIG_FILE="$SCRIPT_DIR/deploy.config.json"
-CONFIG_EXAMPLE="$SCRIPT_DIR/deploy.config.example.json"
-VERSION_FILE="$SCRIPT_DIR/.last_run_id"
+# 部署目录 = 脚本所在目录的父级（即项目根目录），或当前目录
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+DEPLOY_DIR="$(pwd)"
+APP_DIR="${DEPLOY_DIR}/app"
+DATA_DIR="${DEPLOY_DIR}/data"
+PID_FILE="${DEPLOY_DIR}/firetime.pid"
+LOG_FILE="${DEPLOY_DIR}/firetime.log"
 
-# 颜色输出
+PORT="${PORT:-3010}"
+HOSTNAME="${HOSTNAME:-0.0.0.0}"
+
+# ─── 颜色输出 ───
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
-CYAN='\033[0;36m'
-BOLD='\033[1m'
 NC='\033[0m'
 
-log_info() { echo -e "${GREEN}[INFO]${NC} $1"; }
-log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
-log_error() { echo -e "${RED}[ERROR]${NC} $1"; exit 1; }
-log_step() { echo -e "${CYAN}[STEP]${NC} $1"; }
-log_debug() { [ "$DEBUG" == "1" ] && echo -e "${BLUE}[DEBUG]${NC} $1" || true; }
+log()  { echo -e "${GREEN}[deploy]${NC} $*"; }
+warn() { echo -e "${YELLOW}[warn]${NC} $*"; }
+err()  { echo -e "${RED}[error]${NC} $*" >&2; }
 
-# GitHub 代理（中国大陆加速）
-GH_PROXY=""
-GH_RAW_PROXY=""
-
-# 检测是否在中国大陆
-detect_china() {
-    # 检测方法：尝试访问 google.com，如果超时则认为在中国大陆
-    if ! curl -s --connect-timeout 2 -o /dev/null https://www.google.com 2>/dev/null; then
-        GH_PROXY="https://gh-proxy.org/"
-        GH_RAW_PROXY="https://gh-proxy.org/"
-        log_info "检测到中国大陆网络，使用加速代理"
-    fi
-}
-
-# 构建 API URL
-api_url() {
-    echo "${GH_PROXY}https://api.github.com$1"
-}
-
-# 构建 Raw URL
-raw_url() {
-    echo "${GH_RAW_PROXY}https://raw.githubusercontent.com$1"
-}
-
-# 检查依赖
+# ─── 前置检查 ───
 check_deps() {
-    command -v curl >/dev/null 2>&1 || log_error "需要安装 curl"
-    command -v tar >/dev/null 2>&1 || log_error "需要安装 tar"
-    command -v jq >/dev/null 2>&1 || log_error "需要安装 jq: apt install jq"
-    command -v unzip >/dev/null 2>&1 || log_error "需要安装 unzip"
+  local missing=()
+  command -v gh   >/dev/null 2>&1 || missing+=(gh)
+  command -v node >/dev/null 2>&1 || missing+=(node)
+  command -v tar  >/dev/null 2>&1 || missing+=(tar)
+  command -v curl >/dev/null 2>&1 || missing+=(curl)
+
+  if [ ${#missing[@]} -gt 0 ]; then
+    err "缺少依赖: ${missing[*]}"
+    err "请先安装: gh (GitHub CLI), node (>= 20), tar, curl"
+    exit 1
+  fi
+
+  # 检查 gh 是否已认证
+  if ! gh auth status >/dev/null 2>&1; then
+    err "gh 未登录，请先运行: gh auth login"
+    exit 1
+  fi
 }
 
-# TUI 配置向导
-setup_wizard() {
-    echo ""
-    echo -e "${BOLD}╭─────────────────────────────────────────╮${NC}"
-    echo -e "${BOLD}│  ${CYAN}FireTime Deploy Setup${NC}${BOLD}                  │${NC}"
-    echo -e "${BOLD}╰─────────────────────────────────────────╯${NC}"
-    echo ""
+# ─── 自更新脚本 ───
+self_update() {
+  log "检查脚本更新..."
 
-    # 读取默认值
-    local default_repo="lieyanc/FireTime"
-    local default_dir="/opt/firetime"
-    local default_port="9853"
-    local default_pm="pm2"
+  local tmp_script
+  tmp_script="$(mktemp)"
 
-    # 交互式配置
-    echo -e "${BLUE}[1/5]${NC} GitHub 仓库"
-    read -p "      (${default_repo}): " input_repo
-    local repo="${input_repo:-$default_repo}"
+  if curl -fsSL "${SCRIPT_SOURCE_URL}" -o "${tmp_script}" 2>/dev/null; then
+    local current_hash new_hash
+    current_hash="$(md5sum "$0" 2>/dev/null | cut -d' ' -f1 || md5 -q "$0" 2>/dev/null)"
+    new_hash="$(md5sum "${tmp_script}" 2>/dev/null | cut -d' ' -f1 || md5 -q "${tmp_script}" 2>/dev/null)"
 
-    echo -e "${BLUE}[2/5]${NC} 部署目录"
-    read -p "      (${default_dir}): " input_dir
-    local deploy_dir="${input_dir:-$default_dir}"
-
-    echo -e "${BLUE}[3/5]${NC} 端口"
-    read -p "      (${default_port}): " input_port
-    local port="${input_port:-$default_port}"
-
-    echo -e "${BLUE}[4/5]${NC} GitHub Token (私有仓库需要，回车跳过)"
-    read -sp "      : " input_token
-    echo ""
-    local token="${input_token:-}"
-
-    echo -e "${BLUE}[5/5]${NC} 进程管理器"
-    echo "      选项: pm2 / systemd / none"
-    read -p "      (${default_pm}): " input_pm
-    local pm="${input_pm:-$default_pm}"
-
-    # 生成配置文件
-    cat > "$CONFIG_FILE" << EOF
-{
-  "repo": "$repo",
-  "artifact_name": "firetime-standalone",
-  "deploy_dir": "$deploy_dir",
-  "port": $port,
-  "github_token": "$token",
-  "auto_restart": true,
-  "process_manager": "$pm"
-}
-EOF
-
-    echo ""
-    echo -e "${GREEN}✓${NC} 配置已保存到 ${CYAN}deploy.config.json${NC}"
-    # 设置配置文件权限（包含敏感的 token）
-    chmod 600 "$CONFIG_FILE"
-    echo ""
-}
-
-# 加载配置
-load_config() {
-    if [ ! -f "$CONFIG_FILE" ]; then
-        return 1
-    fi
-
-    # 验证 JSON 格式
-    if ! jq empty "$CONFIG_FILE" 2>/dev/null; then
-        log_error "配置文件 JSON 格式错误: $CONFIG_FILE"
-    fi
-
-    REPO=$(jq -r '.repo' "$CONFIG_FILE")
-    ARTIFACT_NAME=$(jq -r '.artifact_name' "$CONFIG_FILE")
-    DEPLOY_DIR=$(jq -r '.deploy_dir' "$CONFIG_FILE")
-    PORT=$(jq -r '.port' "$CONFIG_FILE")
-    # 优先使用环境变量中的 token
-    local config_token=$(jq -r '.github_token // ""' "$CONFIG_FILE")
-    GITHUB_TOKEN="${GITHUB_TOKEN:-$config_token}"
-    AUTO_RESTART=$(jq -r '.auto_restart // true' "$CONFIG_FILE")
-    PROCESS_MANAGER=$(jq -r '.process_manager // "pm2"' "$CONFIG_FILE")
-
-    # 验证必要字段
-    if [ -z "$REPO" ] || [ "$REPO" == "null" ]; then
-        log_error "配置缺少必要字段: repo"
-    fi
-
-    # 如果环境变量提供了 token 但配置文件没有，自动保存到配置
-    if [ -n "$GITHUB_TOKEN" ] && [ -z "$config_token" ]; then
-        log_info "检测到 GITHUB_TOKEN 环境变量，保存到配置文件..."
-        save_token_to_config "$GITHUB_TOKEN"
-    fi
-
-    log_debug "配置加载完成: repo=$REPO, deploy_dir=$DEPLOY_DIR"
-    if [ -n "$GITHUB_TOKEN" ]; then
-        log_debug "GITHUB_TOKEN=***${GITHUB_TOKEN: -4}"
-    fi
-    return 0
-}
-
-# 保存 token 到配置文件
-save_token_to_config() {
-    local token="$1"
-    local temp_file=$(mktemp)
-    jq --arg token "$token" '.github_token = $token' "$CONFIG_FILE" > "$temp_file"
-    mv "$temp_file" "$CONFIG_FILE"
-    chmod 600 "$CONFIG_FILE"
-    log_info "Token 已保存，配置文件权限已设置为 600"
-}
-
-# 获取最新构建信息
-# 返回: run_id 或 "null"（无构建）或 "error:原因"（API 错误）
-get_latest_run() {
-    local auth_header=""
-    if [ -n "$GITHUB_TOKEN" ]; then
-        auth_header="Authorization: Bearer $GITHUB_TOKEN"
-    fi
-
-    local url=$(api_url "/repos/$REPO/actions/runs?status=success&per_page=1")
-    log_debug "API URL: $url"
-
-    local response
-    local http_code
-    if [ -n "$auth_header" ]; then
-        response=$(curl -s -w "\n%{http_code}" -H "$auth_header" "$url")
+    if [ "${current_hash}" != "${new_hash}" ]; then
+      log "发现新版本脚本，正在更新..."
+      cp "${tmp_script}" "$0"
+      chmod +x "$0"
+      rm -f "${tmp_script}"
+      log "脚本已更新，重新执行..."
+      exec "$0" "$@"
     else
-        response=$(curl -s -w "\n%{http_code}" "$url")
+      log "脚本已是最新版本"
     fi
-
-    # 分离响应体和状态码
-    http_code=$(echo "$response" | tail -n1)
-    response=$(echo "$response" | sed '$d')
-
-    log_debug "HTTP 状态码: $http_code"
-
-    # 检查 HTTP 状态码
-    if [ "$http_code" != "200" ]; then
-        local error_msg=$(echo "$response" | jq -r '.message // "未知错误"' 2>/dev/null || echo "无法解析响应")
-        echo "error:HTTP $http_code - $error_msg"
-        return
-    fi
-
-    # 检查响应是否为有效 JSON
-    if ! echo "$response" | jq empty 2>/dev/null; then
-        echo "error:API 返回非 JSON 响应"
-        return
-    fi
-
-    # 检查是否有 workflow_runs 数组
-    local total_count=$(echo "$response" | jq -r '.total_count // 0')
-    if [ "$total_count" == "0" ]; then
-        echo "null"
-        return
-    fi
-
-    echo "$response" | jq -r '.workflow_runs[0].id'
+    rm -f "${tmp_script}"
+  else
+    warn "无法获取远程脚本，跳过自更新"
+  fi
 }
 
-# 检查更新
-# 返回: "none"（无构建）| "current"（已最新）| "error:原因" | run_id（有新版本）
-check_update() {
-    local latest_run=$(get_latest_run)
-
-    # 检查是否为错误
-    if [[ "$latest_run" == error:* ]]; then
-        echo "$latest_run"
-        return
+# ─── 停止旧进程 ───
+stop_existing() {
+  if [ -f "${PID_FILE}" ]; then
+    local old_pid
+    old_pid="$(cat "${PID_FILE}")"
+    if kill -0 "${old_pid}" 2>/dev/null; then
+      log "停止旧进程 (PID: ${old_pid})..."
+      kill "${old_pid}" 2>/dev/null || true
+      # 等待进程退出
+      local wait_count=0
+      while kill -0 "${old_pid}" 2>/dev/null && [ ${wait_count} -lt 10 ]; do
+        sleep 1
+        wait_count=$((wait_count + 1))
+      done
+      if kill -0 "${old_pid}" 2>/dev/null; then
+        warn "进程未正常退出，强制终止..."
+        kill -9 "${old_pid}" 2>/dev/null || true
+      fi
     fi
-
-    if [ "$latest_run" == "null" ] || [ -z "$latest_run" ]; then
-        echo "none"
-        return
-    fi
-
-    local last_run=""
-    if [ -f "$VERSION_FILE" ]; then
-        last_run=$(cat "$VERSION_FILE")
-    fi
-
-    if [ "$latest_run" == "$last_run" ]; then
-        echo "current"
-    else
-        echo "$latest_run"
-    fi
+    rm -f "${PID_FILE}"
+  fi
 }
 
-# 下载并部署
-deploy() {
-    local run_id="$1"
+# ─── 下载最新构建产物 ───
+download_artifact() {
+  log "从 GitHub Actions 下载最新构建产物..."
 
-    log_step "获取 artifact 下载链接..."
+  local tmp_dir
+  tmp_dir="$(mktemp -d)"
 
-    # artifact 下载必须要认证
-    if [ -z "$GITHUB_TOKEN" ]; then
-        log_error "下载 artifact 需要 GITHUB_TOKEN，请配置后重试"
+  # 使用 gh 下载最新的 artifact
+  if ! gh run download --repo "${REPO}" --name "${ARTIFACT_NAME}" --dir "${tmp_dir}" 2>/dev/null; then
+    # 如果直接下载失败，尝试找到最新成功的 run
+    log "尝试查找最新成功的构建..."
+    local run_id
+    run_id="$(gh run list --repo "${REPO}" --workflow "build.yml" --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+
+    if [ -z "${run_id}" ] || [ "${run_id}" = "null" ]; then
+      err "没有找到成功的构建，请确认 GitHub Actions 已运行"
+      rm -rf "${tmp_dir}"
+      exit 1
     fi
 
-    local auth_header="Authorization: Bearer $GITHUB_TOKEN"
-
-    # 获取 artifacts 列表
-    local url=$(api_url "/repos/$REPO/actions/runs/$run_id/artifacts")
-    local response
-    response=$(curl -s -H "$auth_header" "$url")
-
-    local artifact_id=$(echo "$response" | jq -r ".artifacts[] | select(.name==\"$ARTIFACT_NAME\") | .id")
-
-    if [ "$artifact_id" == "null" ] || [ -z "$artifact_id" ]; then
-        log_error "未找到 artifact: $ARTIFACT_NAME (可能已过期，GitHub 只保留 90 天)"
+    log "下载构建 #${run_id} 的产物..."
+    if ! gh run download "${run_id}" --repo "${REPO}" --name "${ARTIFACT_NAME}" --dir "${tmp_dir}"; then
+      err "下载失败"
+      rm -rf "${tmp_dir}"
+      exit 1
     fi
+  fi
 
-    log_debug "Artifact ID: $artifact_id"
+  # 查找 tarball
+  local tarball
+  tarball="$(find "${tmp_dir}" -name '*.tar.gz' -type f | head -1)"
 
-    # 下载 artifact
-    # 注意：GitHub API 返回 302 重定向到 Azure Storage
-    # 1. gh-proxy 会自动跟随重定向并带上 Authorization header，导致 Azure 401 错误
-    # 2. 所以必须直接请求 GitHub API 获取 302 重定向 URL
-    # 3. Azure Storage URL 包含 SAS token，可直接访问，不需要代理
-    local api_download_url="https://api.github.com/repos/$REPO/actions/artifacts/$artifact_id/zip"
+  if [ -z "${tarball}" ]; then
+    err "下载的产物中未找到 tar.gz 文件"
+    rm -rf "${tmp_dir}"
+    exit 1
+  fi
 
-    log_step "下载构建产物..."
-    local temp_dir=$(mktemp -d)
-    cd "$temp_dir"
+  # 解压到 app 目录
+  log "解压构建产物到 ${APP_DIR}..."
+  rm -rf "${APP_DIR}"
+  mkdir -p "${APP_DIR}"
+  tar -xzf "${tarball}" -C "${APP_DIR}"
 
-    log_debug "API 下载 URL: $api_download_url"
-
-    # 第一步：直接请求 GitHub API 获取重定向 URL（不走代理，不跟随重定向）
-    local redirect_response
-    redirect_response=$(curl -sI -H "$auth_header" "$api_download_url")
-
-    local redirect_url=$(echo "$redirect_response" | grep -i "^location:" | sed 's/location: *//i' | tr -d '\r\n')
-
-    if [ -z "$redirect_url" ]; then
-        local http_status=$(echo "$redirect_response" | head -n1)
-        log_error "获取下载链接失败: $http_status\n请检查 token 是否有 actions:read 权限"
-    fi
-
-    log_debug "Azure Storage URL: ${redirect_url:0:80}..."
-
-    # 第二步：直接下载 Azure Storage 文件（不需要代理，URL 中已包含 SAS token）
-    local http_code
-    http_code=$(curl -sL -w "%{http_code}" -o artifact.zip "$redirect_url")
-
-    log_debug "下载 HTTP 状态码: $http_code"
-    log_debug "文件大小: $(wc -c < artifact.zip) 字节"
-
-    # 验证下载结果
-    if [ "$http_code" != "200" ]; then
-        local error_content=$(head -c 500 artifact.zip 2>/dev/null || echo "无法读取")
-        log_error "下载失败，HTTP $http_code\n响应内容: $error_content"
-    fi
-
-    # 验证是否为有效的 zip 文件
-    if ! unzip -t artifact.zip >/dev/null 2>&1; then
-        local file_head=$(head -c 200 artifact.zip 2>/dev/null | cat -v || echo "无法读取")
-        log_error "下载的文件不是有效的 zip 格式\n文件开头: $file_head"
-    fi
-
-    log_step "解压文件..."
-    unzip -q artifact.zip
-    tar -xzf firetime-standalone.tar.gz
-
-    # 停止现有进程
-    if [ "$AUTO_RESTART" == "true" ]; then
-        log_step "停止现有进程..."
-        case "$PROCESS_MANAGER" in
-            pm2)
-                pm2 stop firetime 2>/dev/null || true
-                ;;
-            systemd)
-                sudo systemctl stop firetime 2>/dev/null || true
-                ;;
-        esac
-    fi
-
-    log_step "部署到 $DEPLOY_DIR..."
-    sudo mkdir -p "$DEPLOY_DIR"
-    sudo rm -rf "$DEPLOY_DIR"/*
-    sudo cp -r . "$DEPLOY_DIR"/
-    sudo rm -f "$DEPLOY_DIR"/artifact.zip "$DEPLOY_DIR"/firetime-standalone.tar.gz
-
-    # 保存版本号
-    echo "$run_id" > "$VERSION_FILE"
-
-    # 清理临时文件
-    cd /
-    rm -rf "$temp_dir"
-
-    # 重启进程
-    if [ "$AUTO_RESTART" == "true" ]; then
-        log_step "启动应用..."
-        case "$PROCESS_MANAGER" in
-            pm2)
-                cd "$DEPLOY_DIR" && PORT=$PORT pm2 start server.js --name firetime
-                ;;
-            systemd)
-                sudo systemctl start firetime
-                ;;
-            none)
-                log_info "请手动启动: cd $DEPLOY_DIR && PORT=$PORT node server.js"
-                ;;
-        esac
-    fi
-
-    log_info "部署完成! Run ID: $run_id"
+  rm -rf "${tmp_dir}"
+  log "构建产物已就绪"
 }
 
-# 主逻辑
+# ─── 启动服务 ───
+start_server() {
+  if [ ! -f "${APP_DIR}/server.js" ]; then
+    err "${APP_DIR}/server.js 不存在，请先下载构建产物"
+    exit 1
+  fi
+
+  stop_existing
+
+  # 确保 data 目录存在，并软链接到 app 内部
+  mkdir -p "${DATA_DIR}"
+  ln -sfn "${DATA_DIR}" "${APP_DIR}/data"
+
+  log "启动 FireTime (port: ${PORT})..."
+
+  cd "${APP_DIR}"
+  PORT="${PORT}" HOSTNAME="${HOSTNAME}" nohup node server.js > "${LOG_FILE}" 2>&1 &
+  local new_pid=$!
+  echo "${new_pid}" > "${PID_FILE}"
+  cd - > /dev/null
+
+  # 等待启动
+  sleep 2
+  if kill -0 "${new_pid}" 2>/dev/null; then
+    log "FireTime 已启动 (PID: ${new_pid})"
+    log "地址: http://${HOSTNAME}:${PORT}"
+    log "日志: ${LOG_FILE}"
+    log "PID 文件: ${PID_FILE}"
+  else
+    err "启动失败，请检查日志: ${LOG_FILE}"
+    exit 1
+  fi
+}
+
+# ─── 主流程 ───
 main() {
-    local mode="${1:-deploy}"
-    
-    check_deps
-    detect_china
+  local mode="${1:-full}"
 
-    # 首次运行检查
-    if [ ! -f "$CONFIG_FILE" ]; then
-        if [ "$mode" == "auto" ]; then
-            log_error "配置文件不存在，请先运行 ./deploy.sh 进行配置"
-        fi
-        setup_wizard
-    fi
+  check_deps
 
-    load_config
-
-    case "$mode" in
-        check)
-            log_info "检查更新..."
-            local status=$(check_update)
-            case "$status" in
-                error:*)
-                    log_error "检查更新失败: ${status#error:}"
-                    ;;
-                none)
-                    log_warn "未找到成功的构建记录"
-                    exit 1
-                    ;;
-                current)
-                    log_info "已是最新版本"
-                    exit 0
-                    ;;
-                *)
-                    log_info "发现新版本: Run ID $status"
-                    exit 0
-                    ;;
-            esac
-            ;;
-        
-        auto)
-            local status=$(check_update)
-            case "$status" in
-                error:*)
-                    log_error "检查更新失败: ${status#error:}"
-                    ;;
-                none)
-                    log_info "未找到成功的构建记录，跳过部署"
-                    exit 0
-                    ;;
-                current)
-                    log_info "已是最新版本，无需更新"
-                    exit 0
-                    ;;
-                *)
-                    log_info "发现新版本: Run ID $status"
-                    deploy "$status"
-                    ;;
-            esac
-            ;;
-        
-        deploy|*)
-            log_info "检查更新..."
-            local status=$(check_update)
-            case "$status" in
-                error:*)
-                    log_error "检查更新失败: ${status#error:}"
-                    ;;
-                none)
-                    log_error "未找到成功的构建记录"
-                    ;;
-                current)
-                    log_info "已是最新版本"
-                    read -p "是否强制重新部署? [y/N] " confirm
-                    if [[ "$confirm" =~ ^[Yy]$ ]]; then
-                        local run_id=$(get_latest_run)
-                        if [[ "$run_id" == error:* ]]; then
-                            log_error "获取构建信息失败: ${run_id#error:}"
-                        fi
-                        deploy "$run_id"
-                    fi
-                    ;;
-                *)
-                    log_info "发现新版本: Run ID $status"
-                    deploy "$status"
-                    ;;
-            esac
-            ;;
-    esac
+  case "${mode}" in
+    --update-only)
+      self_update "$@"
+      download_artifact
+      log "已更新完成（未启动服务）"
+      ;;
+    --run-only)
+      start_server
+      ;;
+    --stop)
+      stop_existing
+      log "服务已停止"
+      ;;
+    *)
+      self_update "$@"
+      download_artifact
+      start_server
+      ;;
+  esac
 }
 
 main "$@"
