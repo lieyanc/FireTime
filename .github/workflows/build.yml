@@ -1,0 +1,43 @@
+name: Build Standalone
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Prepare standalone package
+        run: |
+          mkdir -p standalone-package
+          cp -r .next/standalone/* standalone-package/
+          cp -r .next/static standalone-package/.next/static
+          cp -r public standalone-package/public
+
+      - name: Create tarball
+        run: tar -czf firetime-standalone.tar.gz -C standalone-package .
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: firetime-standalone
+          path: firetime-standalone.tar.gz
+          retention-days: 30
