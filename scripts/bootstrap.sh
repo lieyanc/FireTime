@@ -17,7 +17,8 @@ set -e
 
 # 默认值
 DEBUG=false
-SCRIPT_DIR="/opt/firetime-deploy"
+# 默认在脚本运行时的当前目录部署（可用 --dir 覆盖）
+SCRIPT_DIR="$(pwd)"
 
 # 解析参数
 while [[ $# -gt 0 ]]; do
@@ -62,6 +63,27 @@ log_debug "SCRIPT_DIR=$SCRIPT_DIR"
 # GitHub 代理（中国大陆加速）
 GH_PROXY=""
 
+# 确保只添加一次 gh-proxy 前缀，避免出现
+# https://gh-proxy.org/https://gh-proxy.org/https://...
+strip_gh_proxy_prefix() {
+    local url="$1"
+    local prefix="https://gh-proxy.org/"
+    while [[ "$url" == "${prefix}"* ]]; do
+        url="${url#${prefix}}"
+    done
+    echo "$url"
+}
+
+proxy_url() {
+    local url
+    url="$(strip_gh_proxy_prefix "$1")"
+    if [ -n "$GH_PROXY" ]; then
+        echo "${GH_PROXY}${url}"
+    else
+        echo "$url"
+    fi
+}
+
 # 检测是否在中国大陆
 detect_china() {
     log_debug "检测网络环境..."
@@ -81,8 +103,8 @@ detect_china
 # 构建 URL
 REPO="lieyanc/FireTime"
 BRANCH="master"
-DEPLOY_SCRIPT_URL="${GH_PROXY}https://raw.githubusercontent.com/${REPO}/${BRANCH}/scripts/deploy.sh"
-CONFIG_EXAMPLE_URL="${GH_PROXY}https://raw.githubusercontent.com/${REPO}/${BRANCH}/scripts/deploy.config.example.json"
+DEPLOY_SCRIPT_URL="$(proxy_url "https://raw.githubusercontent.com/${REPO}/${BRANCH}/scripts/deploy.sh")"
+CONFIG_EXAMPLE_URL="$(proxy_url "https://raw.githubusercontent.com/${REPO}/${BRANCH}/scripts/deploy.config.example.json")"
 
 log_debug "REPO=$REPO"
 log_debug "BRANCH=$BRANCH"
@@ -135,7 +157,7 @@ if [ ! -f "deploy.config.json" ]; then
             log_warn "下载配置模板失败，但不影响运行"
         }
     fi
-    log_warn "配置文件不存在，请先运行: cd $SCRIPT_DIR && ./deploy.sh"
+    log_warn "配置文件不存在，请先运行: cd \"$SCRIPT_DIR\" && ./deploy.sh"
     exit 1
 fi
 
