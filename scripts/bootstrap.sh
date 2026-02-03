@@ -9,6 +9,10 @@
 # 用法 (中国大陆加速):
 #   curl -fsSL https://gh-proxy.org/https://raw.githubusercontent.com/lieyanc/FireTime/master/scripts/bootstrap.sh | bash
 #
+# 带 GitHub Token (避免 API rate limit):
+#   GITHUB_TOKEN=ghp_xxx curl -fsSL ... | bash
+#   或: ./bootstrap.sh --token ghp_xxx
+#
 # 调试模式:
 #   curl -fsSL ... | bash -s -- --debug
 #   或: ./bootstrap.sh --debug
@@ -19,6 +23,8 @@ set -e
 DEBUG=false
 # 默认在脚本运行时的当前目录部署（可用 --dir 覆盖）
 SCRIPT_DIR="$(pwd)"
+# GitHub Token（从环境变量或参数获取）
+GH_TOKEN="${GITHUB_TOKEN:-}"
 
 # 解析参数
 while [[ $# -gt 0 ]]; do
@@ -29,6 +35,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --dir)
             SCRIPT_DIR="$2"
+            shift 2
+            ;;
+        --token|-t)
+            GH_TOKEN="$2"
             shift 2
             ;;
         *)
@@ -59,6 +69,11 @@ log_debug() {
 
 log_debug "DEBUG=$DEBUG"
 log_debug "SCRIPT_DIR=$SCRIPT_DIR"
+if [ -n "$GH_TOKEN" ]; then
+    log_debug "GITHUB_TOKEN=***${GH_TOKEN: -4} (已配置)"
+else
+    log_debug "GITHUB_TOKEN=(未配置，可能遇到 API rate limit)"
+fi
 
 # GitHub 代理（中国大陆加速）
 GH_PROXY=""
@@ -163,5 +178,10 @@ fi
 
 # 以 auto 模式运行
 log_info "执行自动更新检查..."
-log_debug "执行: ./deploy.sh auto"
-./deploy.sh auto
+if [ -n "$GH_TOKEN" ]; then
+    log_debug "执行: GITHUB_TOKEN=*** ./deploy.sh auto"
+    GITHUB_TOKEN="$GH_TOKEN" ./deploy.sh auto
+else
+    log_debug "执行: ./deploy.sh auto"
+    ./deploy.sh auto
+fi

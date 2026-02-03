@@ -112,6 +112,8 @@ EOF
 
     echo ""
     echo -e "${GREEN}✓${NC} 配置已保存到 ${CYAN}deploy.config.json${NC}"
+    # 设置配置文件权限（包含敏感的 token）
+    chmod 600 "$CONFIG_FILE"
     echo ""
 }
 
@@ -130,7 +132,9 @@ load_config() {
     ARTIFACT_NAME=$(jq -r '.artifact_name' "$CONFIG_FILE")
     DEPLOY_DIR=$(jq -r '.deploy_dir' "$CONFIG_FILE")
     PORT=$(jq -r '.port' "$CONFIG_FILE")
-    GITHUB_TOKEN=$(jq -r '.github_token // ""' "$CONFIG_FILE")
+    # 优先使用环境变量中的 token
+    local config_token=$(jq -r '.github_token // ""' "$CONFIG_FILE")
+    GITHUB_TOKEN="${GITHUB_TOKEN:-$config_token}"
     AUTO_RESTART=$(jq -r '.auto_restart // true' "$CONFIG_FILE")
     PROCESS_MANAGER=$(jq -r '.process_manager // "pm2"' "$CONFIG_FILE")
 
@@ -139,8 +143,27 @@ load_config() {
         log_error "配置缺少必要字段: repo"
     fi
 
+    # 如果环境变量提供了 token 但配置文件没有，自动保存到配置
+    if [ -n "$GITHUB_TOKEN" ] && [ -z "$config_token" ]; then
+        log_info "检测到 GITHUB_TOKEN 环境变量，保存到配置文件..."
+        save_token_to_config "$GITHUB_TOKEN"
+    fi
+
     log_debug "配置加载完成: repo=$REPO, deploy_dir=$DEPLOY_DIR"
+    if [ -n "$GITHUB_TOKEN" ]; then
+        log_debug "GITHUB_TOKEN=***${GITHUB_TOKEN: -4}"
+    fi
     return 0
+}
+
+# 保存 token 到配置文件
+save_token_to_config() {
+    local token="$1"
+    local temp_file=$(mktemp)
+    jq --arg token "$token" '.github_token = $token' "$CONFIG_FILE" > "$temp_file"
+    mv "$temp_file" "$CONFIG_FILE"
+    chmod 600 "$CONFIG_FILE"
+    log_info "Token 已保存，配置文件权限已设置为 600"
 }
 
 # 获取最新构建信息
