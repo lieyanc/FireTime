@@ -255,7 +255,7 @@ deploy() {
 
     local auth_header="Authorization: Bearer $GITHUB_TOKEN"
 
-    # 获取 artifacts 列表（这里可以用代理）
+    # 获取 artifacts 列表
     local url=$(api_url "/repos/$REPO/actions/runs/$run_id/artifacts")
     local response
     response=$(curl -s -H "$auth_header" "$url")
@@ -268,9 +268,8 @@ deploy() {
 
     log_debug "Artifact ID: $artifact_id"
 
-    # 下载 artifact（不使用代理！GitHub 会 302 重定向到真实下载地址）
-    # 真实下载地址在 pipelines.actions.githubusercontent.com，不需要代理
-    local download_url="https://api.github.com/repos/$REPO/actions/artifacts/$artifact_id/zip"
+    # 下载 artifact（使用代理）
+    local download_url=$(api_url "/repos/$REPO/actions/artifacts/$artifact_id/zip")
 
     log_step "下载构建产物..."
     local temp_dir=$(mktemp -d)
@@ -278,24 +277,23 @@ deploy() {
 
     log_debug "下载 URL: $download_url"
 
-    # -L 跟随重定向，重定向后的请求不需要认证头
+    # -L 跟随重定向
     local http_code
     http_code=$(curl -sL -w "%{http_code}" -H "$auth_header" -o artifact.zip "$download_url")
 
     log_debug "下载 HTTP 状态码: $http_code"
+    log_debug "文件大小: $(wc -c < artifact.zip) 字节"
 
     # 验证下载结果
     if [ "$http_code" != "200" ]; then
         local error_content=$(head -c 500 artifact.zip 2>/dev/null || echo "无法读取")
-        log_debug "响应内容: $error_content"
-        log_error "下载失败，HTTP $http_code (检查 token 是否有 actions:read 权限)"
+        log_error "下载失败，HTTP $http_code\n响应内容: $error_content"
     fi
 
     # 验证是否为有效的 zip 文件
     if ! unzip -t artifact.zip >/dev/null 2>&1; then
-        local file_type=$(file artifact.zip 2>/dev/null || echo "unknown")
-        log_debug "文件类型: $file_type"
-        log_error "下载的文件不是有效的 zip 格式，可能是 token 权限不足或网络问题"
+        local file_head=$(head -c 200 artifact.zip 2>/dev/null | cat -v || echo "无法读取")
+        log_error "下载的文件不是有效的 zip 格式\n文件开头: $file_head"
     fi
 
     log_step "解压文件..."
