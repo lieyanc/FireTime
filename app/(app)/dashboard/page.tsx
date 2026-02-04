@@ -803,10 +803,25 @@ function CompactTodoList({
   onCycleTodoStatus: (userId: UserId, todoId: string) => void;
   onDeleteTodo: (userId: UserId, todoId: string) => void;
 }) {
-  const [activeTab, setActiveTab] = useState<UserId>(currentUserId);
-  const [newTodo, setNewTodo] = useState("");
+  const [newTodo1, setNewTodo1] = useState("");
+  const [newTodo2, setNewTodo2] = useState("");
 
-  const activeTodos = activeTab === "user1" ? todos1 : todos2;
+  const sortTodos = (todos: GlobalTodoItem[]) =>
+    [...todos].sort((a, b) => {
+      const order: Record<TodoStatus, number> = {
+        in_progress: 0,
+        pending: 1,
+        completed: 2,
+      };
+      if (order[a.status] !== order[b.status])
+        return order[a.status] - order[b.status];
+      if (a.deadline && !b.deadline) return -1;
+      if (!a.deadline && b.deadline) return 1;
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+
+  const sortedTodos1 = sortTodos(todos1);
+  const sortedTodos2 = sortTodos(todos2);
 
   const counts1 = {
     done: todos1.filter((t) => t.status === "completed").length,
@@ -817,116 +832,81 @@ function CompactTodoList({
     total: todos2.length,
   };
 
-  const sortedTodos = [...activeTodos].sort((a, b) => {
-    const order: Record<TodoStatus, number> = {
-      in_progress: 0,
-      pending: 1,
-      completed: 2,
-    };
-    if (order[a.status] !== order[b.status])
-      return order[a.status] - order[b.status];
-    if (a.deadline && !b.deadline) return -1;
-    if (!a.deadline && b.deadline) return 1;
-    return (
-      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    );
-  });
-
-  const handleAdd = () => {
-    if (!newTodo.trim()) return;
-    onAddTodo(activeTab, {
+  const handleAdd = (userId: UserId, title: string, clearFn: () => void) => {
+    if (!title.trim()) return;
+    onAddTodo(userId, {
       id: nanoid(),
-      title: newTodo.trim(),
+      title: title.trim(),
       status: "pending",
       createdAt: new Date().toISOString(),
     });
-    setNewTodo("");
+    clearFn();
   };
 
-  return (
-    <>
-      {/* Header */}
-      <div className="flex items-center justify-between p-3 pb-0">
-        <div className="flex items-center gap-1.5 text-sm font-medium">
-          <ListTodo className="h-4 w-4" />
-          待办事项
-        </div>
+  const renderTodoList = (
+    userId: UserId,
+    user: User,
+    todos: GlobalTodoItem[],
+    counts: { done: number; total: number },
+    newTodo: string,
+    setNewTodo: (v: string) => void
+  ) => (
+    <div className="flex-1 min-w-0 flex flex-col">
+      {/* User Header */}
+      <div className="flex items-center justify-between mb-1.5">
+        <span className="text-xs font-medium truncate">{user.name}</span>
+        <span className="text-[10px] text-muted-foreground tabular-nums">
+          {counts.done}/{counts.total}
+        </span>
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-1 px-3 pt-2">
-        <button
-          onClick={() => setActiveTab("user1")}
-          className={cn(
-            "text-xs px-2.5 py-1 rounded-md transition-colors",
-            activeTab === "user1"
-              ? "bg-primary text-primary-foreground"
-              : "text-muted-foreground hover:bg-muted"
-          )}
-        >
-          {user1.name} ({counts1.done}/{counts1.total})
-        </button>
-        <button
-          onClick={() => setActiveTab("user2")}
-          className={cn(
-            "text-xs px-2.5 py-1 rounded-md transition-colors",
-            activeTab === "user2"
-              ? "bg-primary text-primary-foreground"
-              : "text-muted-foreground hover:bg-muted"
-          )}
-        >
-          {user2.name} ({counts2.done}/{counts2.total})
-        </button>
-      </div>
-
-      {/* Add */}
-      <div className="flex gap-1 px-3 pt-2">
+      {/* Add Input */}
+      <div className="flex gap-1 mb-1.5">
         <Input
           value={newTodo}
           onChange={(e) => setNewTodo(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && handleAdd()}
-          placeholder="添加待办..."
-          className="h-7 text-xs"
+          onKeyDown={(e) =>
+            e.key === "Enter" && handleAdd(userId, newTodo, () => setNewTodo(""))
+          }
+          placeholder="添加..."
+          className="h-6 text-[11px] px-2"
         />
         <Button
           size="icon"
-          className="h-7 w-7 shrink-0"
-          onClick={handleAdd}
+          className="h-6 w-6 shrink-0"
+          onClick={() => handleAdd(userId, newTodo, () => setNewTodo(""))}
         >
           <Plus className="h-3 w-3" />
         </Button>
       </div>
 
-      {/* List */}
-      <ScrollArea className="flex-1 px-3 py-2">
-        <div className="space-y-0.5">
-          {sortedTodos.length === 0 ? (
-            <div className="text-center text-xs text-muted-foreground py-6">
-              暂无待办
+      {/* Todo List */}
+      <ScrollArea className="flex-1">
+        <div className="space-y-0.5 pr-1">
+          {todos.length === 0 ? (
+            <div className="text-center text-[10px] text-muted-foreground py-4">
+              暂无
             </div>
           ) : (
-            sortedTodos.map((todo) => {
+            todos.map((todo) => {
               const StatusIcon = statusConfig[todo.status].icon;
               return (
                 <div
                   key={todo.id}
                   className={cn(
-                    "flex items-center gap-1.5 py-1 px-1 rounded hover:bg-muted/50 group",
+                    "flex items-center gap-1 py-0.5 px-1 rounded hover:bg-muted/50 group",
                     todo.status === "completed" && "opacity-50"
                   )}
                 >
                   <button
-                    onClick={() => onCycleTodoStatus(activeTab, todo.id)}
-                    className={cn(
-                      "shrink-0",
-                      statusConfig[todo.status].color
-                    )}
+                    onClick={() => onCycleTodoStatus(userId, todo.id)}
+                    className={cn("shrink-0", statusConfig[todo.status].color)}
                   >
-                    <StatusIcon className="h-3.5 w-3.5" />
+                    <StatusIcon className="h-3 w-3" />
                   </button>
                   <span
                     className={cn(
-                      "text-xs flex-1 truncate",
+                      "text-[11px] flex-1 truncate",
                       todo.status === "completed" &&
                         "line-through text-muted-foreground"
                     )}
@@ -934,10 +914,10 @@ function CompactTodoList({
                     {todo.title}
                   </span>
                   <button
-                    onClick={() => onDeleteTodo(activeTab, todo.id)}
+                    onClick={() => onDeleteTodo(userId, todo.id)}
                     className="opacity-0 group-hover:opacity-100 text-destructive shrink-0"
                   >
-                    <Trash2 className="h-3 w-3" />
+                    <Trash2 className="h-2.5 w-2.5" />
                   </button>
                 </div>
               );
@@ -945,6 +925,23 @@ function CompactTodoList({
           )}
         </div>
       </ScrollArea>
+    </div>
+  );
+
+  return (
+    <>
+      {/* Header */}
+      <div className="flex items-center gap-1.5 p-3 pb-2 text-sm font-medium">
+        <ListTodo className="h-4 w-4" />
+        待办事项
+      </div>
+
+      {/* Two Column Layout */}
+      <div className="flex-1 flex gap-3 px-3 pb-2 min-h-0">
+        {renderTodoList("user1", user1, sortedTodos1, counts1, newTodo1, setNewTodo1)}
+        <div className="w-px bg-border shrink-0" />
+        {renderTodoList("user2", user2, sortedTodos2, counts2, newTodo2, setNewTodo2)}
+      </div>
     </>
   );
 }
