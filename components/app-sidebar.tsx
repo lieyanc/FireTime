@@ -78,6 +78,7 @@ export function AppSidebar() {
                       pathname === item.href ||
                       (item.title === "今日" && pathname.startsWith("/day/"))
                     }
+                    className="h-10"
                   >
                     <Link href={item.href}>
                       <item.icon className="h-4 w-4" />

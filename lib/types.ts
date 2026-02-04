@@ -103,6 +103,7 @@ export interface AppSettings {
   vacation: VacationSettings;
   subjects: Subject[];
   exams: ExamCountdown[];
+  motto?: string; // 格言
 }
 
 // API Response types

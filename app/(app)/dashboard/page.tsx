@@ -9,11 +9,9 @@ import { useSettings, getVacationProgress, getSubjectProgress } from "@/hooks/us
 import { useGlobalTodos } from "@/hooks/use-global-todos";
 import { useDailyCheckIns, useDailyTasks } from "@/hooks/use-daily-tasks";
 import { useClock } from "@/hooks/use-clock";
-import { getToday, formatDisplayDate, parseTime, parseDate } from "@/lib/dates";
-import { DailyTaskManager } from "@/components/daily-checkin";
+import { getToday, parseTime, parseDate } from "@/lib/dates";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
-import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -213,47 +211,9 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-3">
-      {/* ─── Header ─── */}
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <div className="flex items-center gap-3">
-          <h1 className="text-xl font-bold">{currentUser?.name}</h1>
-          <span className="text-sm text-muted-foreground">
-            {formatDisplayDate(today)}
-          </span>
-        </div>
-        <div className="flex-1 flex justify-center">
-          <span className="font-mono text-2xl font-semibold tabular-nums tracking-tight">
-            {currentTime}
-          </span>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <Link href="/checkin">
-            <Badge variant="default" className="cursor-pointer text-xs">
-              每日打卡
-            </Badge>
-          </Link>
-          <Link href={`/day/${today}`}>
-            <Badge
-              variant="outline"
-              className="cursor-pointer text-xs hover:bg-accent"
-            >
-              管理时间表
-            </Badge>
-          </Link>
-          <DailyTaskManager
-            tasks={dailyTasks}
-            subjects={settings?.subjects}
-            userId={currentUserId}
-            onAdd={addTask}
-            onRemove={removeTask}
-            onEdit={editTask}
-          />
-        </div>
-      </div>
-
       {/* ─── Current Activity Banner ─── */}
-      <div className="rounded-xl border bg-gradient-to-r from-primary/8 via-primary/4 to-transparent p-4">
-        <div className="flex items-center justify-between text-xs text-muted-foreground mb-3">
+      <div className="rounded-xl border bg-gradient-to-r from-primary/8 via-primary/4 to-transparent p-3">
+        <div className="flex items-center justify-between text-xs text-muted-foreground mb-2">
           <span className="flex items-center gap-1.5">
             <Timer className="h-3.5 w-3.5" />
             时间轴
@@ -289,7 +249,7 @@ export default function DashboardPage() {
       {/* ─── Stats Row ─── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {/* Vacation */}
-        <div className="rounded-xl border p-3 space-y-1.5">
+        <div className="rounded-xl border p-2.5 space-y-1">
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <Flame className="h-3.5 w-3.5 text-orange-500" />
             {settings?.vacation?.name || "假期"}
@@ -310,7 +270,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Exam */}
-        <div className="rounded-xl border p-3 space-y-1.5">
+        <div className="rounded-xl border p-2.5 space-y-1">
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <GraduationCap className="h-3.5 w-3.5 text-blue-500" />
             考试倒计时
@@ -348,7 +308,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Homework */}
-        <div className="rounded-xl border p-3 space-y-1.5">
+        <div className="rounded-xl border p-2.5 space-y-1">
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <BookOpen className="h-3.5 w-3.5 text-green-500" />
             作业总进度
@@ -367,7 +327,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Check-in */}
-        <div className="rounded-xl border p-3 space-y-1.5">
+        <div className="rounded-xl border p-2.5 space-y-1">
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <Target className="h-3.5 w-3.5 text-purple-500" />
             今日打卡

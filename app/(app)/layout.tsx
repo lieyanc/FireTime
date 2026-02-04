@@ -1,19 +1,47 @@
 "use client";
 
+import { useState } from "react";
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { Separator } from "@/components/ui/separator";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
-import { Moon, Sun, Home, Clock } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Moon, Sun, Home, Flame, Edit3, Check, X, User as UserIcon } from "lucide-react";
 import { useUser } from "@/components/user-provider";
+import { useSettings } from "@/hooks/use-settings";
 import { useClock } from "@/hooks/use-clock";
 import Link from "next/link";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { theme, setTheme } = useTheme();
   const { currentUser } = useUser();
   const currentTime = useClock();
+  const { settings, updateSettings } = useSettings();
+  const [editingMotto, setEditingMotto] = useState(false);
+  const [mottoValue, setMottoValue] = useState("");
+
+  const handleEditMotto = () => {
+    setMottoValue(settings?.motto || "");
+    setEditingMotto(true);
+  };
+
+  const handleSaveMotto = async () => {
+    if (settings) {
+      await updateSettings({ ...settings, motto: mottoValue });
+    }
+    setEditingMotto(false);
+  };
+
+  const handleCancelMotto = () => {
+    setEditingMotto(false);
+    setMottoValue("");
+  };
 
   return (
     <SidebarProvider>
@@ -33,17 +61,68 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
           <div className="flex-1" />
 
-          {/* 全局时间 */}
-          <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-            <Clock className="h-4 w-4" />
-            <span className="font-mono tabular-nums">{currentTime}</span>
+          {/* 中间区域: FireTime + 时间 + 格言 */}
+          <div className="flex flex-col items-center">
+            <div className="flex items-center gap-2">
+              <Flame className="h-5 w-5 text-orange-500" />
+              <span className="font-bold text-lg">FireTime</span>
+              <span className="font-mono text-2xl font-semibold tabular-nums tracking-tight">
+                {currentTime}
+              </span>
+            </div>
+            <Popover open={editingMotto} onOpenChange={(open) => !open && handleCancelMotto()}>
+              <PopoverTrigger asChild>
+                <button
+                  onClick={handleEditMotto}
+                  className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1 group"
+                >
+                  {settings?.motto || "点击设置格言"}
+                  <Edit3 className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent className="w-80">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">设置格言</label>
+                  <Input
+                    value={mottoValue}
+                    onChange={(e) => setMottoValue(e.target.value)}
+                    placeholder="输入你的格言..."
+                    onKeyDown={(e) => e.key === "Enter" && handleSaveMotto()}
+                    autoFocus
+                  />
+                  <div className="flex gap-2 justify-end">
+                    <Button size="sm" variant="outline" onClick={handleCancelMotto}>
+                      <X className="h-3 w-3 mr-1" />
+                      取消
+                    </Button>
+                    <Button size="sm" onClick={handleSaveMotto}>
+                      <Check className="h-3 w-3 mr-1" />
+                      保存
+                    </Button>
+                  </div>
+                </div>
+              </PopoverContent>
+            </Popover>
           </div>
 
-          <Separator orientation="vertical" className="h-6" />
+          <div className="flex-1" />
 
-          {/* 当前用户名 */}
+          {/* 右侧: 用户头像和名字 */}
           {currentUser && (
-            <span className="text-sm font-medium">{currentUser.name}</span>
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center overflow-hidden border">
+                {currentUser.avatar ? (
+                  <img
+                    src={currentUser.avatar}
+                    alt={currentUser.name}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <UserIcon className="w-4 h-4 text-muted-foreground" />
+                )}
+              </div>
+              <span className="text-sm font-medium">{currentUser.name}</span>
+            </div>
           )}
 
           <Separator orientation="vertical" className="h-6" />
