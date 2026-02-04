@@ -4,6 +4,7 @@ export interface User {
   id: UserId;
   name: string;
   avatar?: string; // 头像文件路径
+  progressColor?: string; // 进度条颜色
 }
 
 export interface TimeBlock {

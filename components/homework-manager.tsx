@@ -1,14 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { nanoid } from "nanoid";
-import { Plus, Trash2, Edit2, GraduationCap } from "lucide-react";
+import { Plus, Trash2, Edit2, GraduationCap, GripVertical, ChevronDown } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
+import { ColorPicker } from "@/components/ui/color-picker";
 import {
   Dialog,
   DialogContent,
@@ -21,15 +22,15 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import type { Subject, HomeworkItem, UserId } from "@/lib/types";
+import type { Subject, HomeworkItem, UserId, User } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { getSubjectProgress } from "@/hooks/use-settings";
-import { ChevronDown } from "lucide-react";
 
 interface HomeworkManagerProps {
   subjects: Subject[];
   onUpdateSubjects: (subjects: Subject[]) => void;
   userId: UserId;
+  users?: User[];
   compact?: boolean;
 }
 
@@ -37,6 +38,7 @@ export function HomeworkManager({
   subjects,
   onUpdateSubjects,
   userId,
+  users,
   compact = false,
 }: HomeworkManagerProps) {
   const [editingSubject, setEditingSubject] = useState<Subject | null>(null);
@@ -44,6 +46,11 @@ export function HomeworkManager({
   const [expandedSubjects, setExpandedSubjects] = useState<Set<string>>(new Set());
 
   const overallProgress = getSubjectProgress(subjects, userId);
+
+  const user1 = users?.find((u) => u.id === "user1");
+  const user2 = users?.find((u) => u.id === "user2");
+  const user1Name = user1?.name || "用户1";
+  const user2Name = user2?.name || "用户2";
 
   const toggleExpanded = (id: string) => {
     const next = new Set(expandedSubjects);
@@ -106,10 +113,7 @@ export function HomeworkManager({
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
-          {/* 总体进度条 */}
           <Progress value={overallProgress.percentage} className="h-2" />
-
-          {/* 六门学科 2x3 布局 */}
           <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 pt-1">
             {overallProgress.bySubject.map((s) => (
               <div key={s.id} className="flex items-center gap-1.5">
@@ -151,6 +155,8 @@ export function HomeworkManager({
               <SubjectForm
                 onSubmit={handleAddSubject}
                 onCancel={() => setIsAddSubjectOpen(false)}
+                user1Name={user1Name}
+                user2Name={user2Name}
               />
             </DialogContent>
           </Dialog>
@@ -280,6 +286,8 @@ export function HomeworkManager({
                                 initialData={subject}
                                 onSubmit={handleUpdateSubject}
                                 onCancel={() => setEditingSubject(null)}
+                                user1Name={user1Name}
+                                user2Name={user2Name}
                               />
                             </DialogContent>
                           </Dialog>
@@ -310,10 +318,14 @@ function SubjectForm({
   initialData,
   onSubmit,
   onCancel,
+  user1Name,
+  user2Name,
 }: {
   initialData?: Subject;
   onSubmit: (subject: Subject) => void;
   onCancel: () => void;
+  user1Name: string;
+  user2Name: string;
 }) {
   const [name, setName] = useState(initialData?.name || "");
   const [color, setColor] = useState(initialData?.color || "#3b82f6");
@@ -323,6 +335,7 @@ function SubjectForm({
   const [homework, setHomework] = useState<HomeworkItem[]>(
     initialData?.homework || []
   );
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
 
   const addHomework = () => {
     setHomework([
@@ -347,6 +360,27 @@ function SubjectForm({
     setHomework(homework.filter((h) => h.id !== id));
   };
 
+  // Drag and drop handlers
+  const handleDragStart = (index: number) => {
+    setDraggedIndex(index);
+  };
+
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    if (draggedIndex === null || draggedIndex === index) return;
+
+    const newHomework = [...homework];
+    const draggedItem = newHomework[draggedIndex];
+    newHomework.splice(draggedIndex, 1);
+    newHomework.splice(index, 0, draggedItem);
+    setHomework(newHomework);
+    setDraggedIndex(index);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedIndex(null);
+  };
+
   const handleSubmit = () => {
     if (!name.trim()) return;
     onSubmit({
@@ -357,17 +391,6 @@ function SubjectForm({
       assignedTo,
     });
   };
-
-  const colors = [
-    "#3b82f6",
-    "#ef4444",
-    "#22c55e",
-    "#f59e0b",
-    "#8b5cf6",
-    "#ec4899",
-    "#06b6d4",
-    "#84cc16",
-  ];
 
   return (
     <div className="space-y-4">
@@ -399,7 +422,7 @@ function SubjectForm({
             onClick={() => setAssignedTo("user1")}
             className="flex-1"
           >
-            仅用户1
+            仅{user1Name}
           </Button>
           <Button
             type="button"
@@ -408,7 +431,7 @@ function SubjectForm({
             onClick={() => setAssignedTo("user2")}
             className="flex-1"
           >
-            仅用户2
+            仅{user2Name}
           </Button>
         </div>
         <p className="text-xs text-muted-foreground">
@@ -418,18 +441,9 @@ function SubjectForm({
 
       <div className="space-y-2">
         <Label>颜色</Label>
-        <div className="flex gap-2">
-          {colors.map((c) => (
-            <button
-              key={c}
-              className={cn(
-                "w-8 h-8 rounded-full transition-all",
-                color === c && "ring-2 ring-offset-2 ring-primary"
-              )}
-              style={{ backgroundColor: c }}
-              onClick={() => setColor(c)}
-            />
-          ))}
+        <div className="flex items-center gap-2">
+          <ColorPicker value={color} onChange={setColor} />
+          <span className="text-sm text-muted-foreground font-mono">{color}</span>
         </div>
       </div>
 
@@ -441,9 +455,21 @@ function SubjectForm({
             添加
           </Button>
         </div>
+        <p className="text-xs text-muted-foreground">拖拽左侧手柄可调整顺序</p>
         <div className="space-y-2 max-h-48 overflow-y-auto">
-          {homework.map((hw) => (
-            <div key={hw.id} className="flex items-center gap-2 p-2 border rounded">
+          {homework.map((hw, index) => (
+            <div
+              key={hw.id}
+              draggable
+              onDragStart={() => handleDragStart(index)}
+              onDragOver={(e) => handleDragOver(e, index)}
+              onDragEnd={handleDragEnd}
+              className={cn(
+                "flex items-center gap-2 p-2 border rounded bg-background",
+                draggedIndex === index && "opacity-50 border-primary"
+              )}
+            >
+              <GripVertical className="h-4 w-4 text-muted-foreground cursor-grab shrink-0" />
               <Input
                 className="flex-1"
                 value={hw.title}

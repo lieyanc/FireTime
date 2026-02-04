@@ -21,6 +21,7 @@ import {
   LogOut,
   Camera,
   User as UserIcon,
+  GraduationCap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -43,9 +44,10 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { HomeworkManager } from "@/components/homework-manager";
+import { ColorPicker } from "@/components/ui/color-picker";
 import { useSettings } from "@/hooks/use-settings";
 import { useUser } from "@/components/user-provider";
-import type { ScheduleTemplate, TimeBlock, User, UserId } from "@/lib/types";
+import type { ScheduleTemplate, TimeBlock, User, UserId, ExamCountdown } from "@/lib/types";
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
@@ -98,11 +100,11 @@ export default function SettingsPage() {
   const users = usersData?.users || [];
   const templates = templatesData?.templates || [];
 
-  const handleUserProfileChange = async (id: string, name: string, avatar?: string) => {
+  const handleUserProfileChange = async (id: string, name: string, avatar?: string, progressColor?: string) => {
     await fetch("/api/users", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, name, avatar }),
+      body: JSON.stringify({ id, name, avatar, progressColor }),
     });
     mutate("/api/users");
   };
@@ -245,7 +247,7 @@ export default function SettingsPage() {
             <UserProfileEditor
               key={user.id}
               user={user}
-              onSave={(name, avatar) => handleUserProfileChange(user.id, name, avatar)}
+              onSave={(name, avatar, progressColor) => handleUserProfileChange(user.id, name, avatar, progressColor)}
             />
           ))}
         </CardContent>
@@ -292,12 +294,21 @@ export default function SettingsPage() {
         </Card>
       )}
 
+      {/* 考试倒计时 */}
+      {settings && (
+        <ExamManager
+          exams={settings.exams || []}
+          onUpdate={(exams) => updateSettings({ ...settings, exams })}
+        />
+      )}
+
       {/* 学科作业管理 */}
       {settings?.subjects && (
         <HomeworkManager
           subjects={settings.subjects}
           onUpdateSubjects={updateSubjects}
           userId={currentUserId}
+          users={users}
         />
       )}
 
@@ -373,16 +384,16 @@ function UserProfileEditor({
   onSave,
 }: {
   user: User;
-  onSave: (name: string, avatar?: string) => void;
+  onSave: (name: string, avatar?: string, progressColor?: string) => void;
 }) {
   const [name, setName] = useState(user.name);
   const [isEditing, setIsEditing] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const fileInputRef = useState<HTMLInputElement | null>(null);
+  const [progressColor, setProgressColor] = useState(user.progressColor || "#3b82f6");
 
   const handleSave = () => {
     if (name.trim() && name !== user.name) {
-      onSave(name.trim(), user.avatar);
+      onSave(name.trim(), user.avatar, progressColor);
     }
     setIsEditing(false);
   };
@@ -404,13 +415,18 @@ function UserProfileEditor({
 
       if (res.ok) {
         const data = await res.json();
-        onSave(user.name, data.avatar);
+        onSave(user.name, data.avatar, progressColor);
       }
     } catch (error) {
       console.error("Avatar upload failed:", error);
     } finally {
       setUploading(false);
     }
+  };
+
+  const handleColorChange = (color: string) => {
+    setProgressColor(color);
+    onSave(user.name, user.avatar, color);
   };
 
   return (
@@ -444,7 +460,7 @@ function UserProfileEditor({
         </label>
       </div>
 
-      {/* Name */}
+      {/* Name & Color */}
       <div className="flex-1">
         <Label className="text-xs text-muted-foreground">
           {user.id === "user1" ? "用户 1" : "用户 2"}
@@ -475,6 +491,12 @@ function UserProfileEditor({
             </Button>
           </div>
         )}
+      </div>
+
+      {/* Progress Color */}
+      <div className="flex flex-col items-center gap-1">
+        <Label className="text-[10px] text-muted-foreground">进度条</Label>
+        <ColorPicker value={progressColor} onChange={handleColorChange} />
       </div>
     </div>
   );
@@ -837,5 +859,153 @@ function PasswordManager({
         </div>
       )}
     </div>
+  );
+}
+
+function ExamManager({
+  exams,
+  onUpdate,
+}: {
+  exams: ExamCountdown[];
+  onUpdate: (exams: ExamCountdown[]) => void;
+}) {
+  const [newName, setNewName] = useState("");
+  const [newDate, setNewDate] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editDate, setEditDate] = useState("");
+
+  const handleAdd = () => {
+    if (!newName.trim() || !newDate) return;
+    onUpdate([
+      ...exams,
+      { id: nanoid(), name: newName.trim(), date: newDate },
+    ]);
+    setNewName("");
+    setNewDate("");
+  };
+
+  const handleDelete = (id: string) => {
+    onUpdate(exams.filter((e) => e.id !== id));
+  };
+
+  const handleEdit = (exam: ExamCountdown) => {
+    setEditingId(exam.id);
+    setEditName(exam.name);
+    setEditDate(exam.date);
+  };
+
+  const handleSaveEdit = () => {
+    if (!editingId || !editName.trim() || !editDate) return;
+    onUpdate(
+      exams.map((e) =>
+        e.id === editingId ? { ...e, name: editName.trim(), date: editDate } : e
+      )
+    );
+    setEditingId(null);
+    setEditName("");
+    setEditDate("");
+  };
+
+  const sortedExams = [...exams].sort((a, b) => a.date.localeCompare(b.date));
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <GraduationCap className="h-5 w-5" />
+          考试倒计时
+        </CardTitle>
+        <CardDescription>添加重要考试，在首页显示倒计时</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {/* 添加新考试 */}
+        <div className="flex gap-2">
+          <Input
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            placeholder="考试名称"
+            className="flex-1"
+            onKeyDown={(e) => e.key === "Enter" && handleAdd()}
+          />
+          <Input
+            type="date"
+            value={newDate}
+            onChange={(e) => setNewDate(e.target.value)}
+            className="w-40"
+          />
+          <Button onClick={handleAdd} disabled={!newName.trim() || !newDate}>
+            <Plus className="h-4 w-4 mr-1" />
+            添加
+          </Button>
+        </div>
+
+        {/* 考试列表 */}
+        {sortedExams.length === 0 ? (
+          <p className="text-center text-muted-foreground py-4">暂无考试</p>
+        ) : (
+          <div className="space-y-2">
+            {sortedExams.map((exam) => (
+              <div
+                key={exam.id}
+                className="flex items-center justify-between p-3 border rounded-lg"
+              >
+                {editingId === exam.id ? (
+                  <div className="flex gap-2 flex-1 mr-2">
+                    <Input
+                      value={editName}
+                      onChange={(e) => setEditName(e.target.value)}
+                      className="flex-1"
+                      autoFocus
+                    />
+                    <Input
+                      type="date"
+                      value={editDate}
+                      onChange={(e) => setEditDate(e.target.value)}
+                      className="w-40"
+                    />
+                    <Button size="sm" onClick={handleSaveEdit}>
+                      保存
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setEditingId(null)}
+                    >
+                      取消
+                    </Button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-3">
+                      <span className="font-medium">{exam.name}</span>
+                      <Badge variant="outline">{exam.date}</Badge>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8"
+                        onClick={() => handleEdit(exam)}
+                      >
+                        <Edit2 className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-destructive hover:text-destructive"
+                        onClick={() => handleDelete(exam.id)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }

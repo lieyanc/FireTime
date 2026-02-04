@@ -8,12 +8,12 @@ export async function GET() {
 
 export async function PUT(request: Request) {
   const body = await request.json();
-  const { id, name, avatar } = body;
+  const { id, name, avatar, progressColor } = body;
 
   if (!id || !name) {
     return NextResponse.json({ error: "Missing id or name" }, { status: 400 });
   }
 
-  const users = updateUser(id, name, avatar);
+  const users = updateUser(id, name, avatar, progressColor);
   return NextResponse.json({ users });
 }

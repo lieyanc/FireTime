@@ -43,13 +43,16 @@ export function getUsers(): User[] {
   return JSON.parse(fs.readFileSync(filePath, "utf-8"));
 }
 
-export function updateUser(id: string, name: string, avatar?: string): User[] {
+export function updateUser(id: string, name: string, avatar?: string, progressColor?: string): User[] {
   const users = getUsers();
   const user = users.find((u) => u.id === id);
   if (user) {
     user.name = name;
     if (avatar !== undefined) {
       user.avatar = avatar;
+    }
+    if (progressColor !== undefined) {
+      user.progressColor = progressColor;
     }
     const filePath = path.join(DATA_DIR, "users.json");
     fs.writeFileSync(filePath, JSON.stringify(users, null, 2));
