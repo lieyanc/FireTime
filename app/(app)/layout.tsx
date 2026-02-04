@@ -1,17 +1,15 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { SidebarProvider, SidebarInset, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
-import { AppSidebar } from "@/components/app-sidebar";
+import { SidebarProvider, SidebarInset, SidebarTrigger, SidebarHeaderBrand, useSidebar, AppSidebar } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Moon, Sun, Flame, Edit3, Check, X, User as UserIcon, Github, Server, Maximize, Minimize, Clock, Home } from "lucide-react";
+import { Moon, Sun, Edit3, Check, X, User as UserIcon, Github, Server, Maximize, Minimize, Clock } from "lucide-react";
 import { useUser } from "@/components/user-provider";
 import { useSettings } from "@/hooks/use-settings";
 import { useClock } from "@/hooks/use-clock";
-import Link from "next/link";
 import {
   Popover,
   PopoverContent,
@@ -117,74 +115,52 @@ function HeaderContent() {
 
   return (
     <header className="relative flex h-14 items-center gap-2 border-b px-4">
+      {/* Mobile only: sidebar trigger */}
       <SidebarTrigger />
 
-      {/* 返回主页 */}
-      <TooltipProvider>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button variant="ghost" size="icon" asChild>
-              <Link href="/dashboard">
-                <Home className="h-4 w-4" />
-                <span className="sr-only">返回主页</span>
-              </Link>
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>
-            <p>返回主页</p>
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
+      {/* Shows "FireTime" when sidebar is collapsed on desktop */}
+      <SidebarHeaderBrand />
 
-      <Separator orientation="vertical" className="h-6" />
-
-      {/* 左侧: FireTime Logo + 构建信息 */}
-      <div className="flex items-center gap-3">
-        <div className="flex items-center gap-1.5">
-          <Flame className="h-5 w-5 text-orange-500" />
-          <span className="font-bold">FireTime</span>
-        </div>
-
-        <div className="flex flex-col text-xs text-muted-foreground">
+      {/* 左侧: 构建信息 */}
+      <div className="flex flex-col text-xs text-muted-foreground">
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <a
+                href="https://github.com/lieyanc/FireTime"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 hover:text-foreground transition-colors"
+              >
+                <Github className="h-3.5 w-3.5" />
+                <span className="font-mono">{BUILD_INFO.commitId}</span>
+                {BUILD_INFO.buildId !== "local" && (
+                  <span className="font-mono">#{BUILD_INFO.buildId}</span>
+                )}
+              </a>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>查看 GitHub 仓库</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+        <div className="flex items-center gap-3">
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <a
-                  href="https://github.com/lieyanc/FireTime"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-1.5 hover:text-foreground transition-colors"
-                >
-                  <Github className="h-3.5 w-3.5" />
-                  <span className="font-mono">{BUILD_INFO.commitId}</span>
-                  {BUILD_INFO.buildId !== "local" && (
-                    <span className="font-mono">#{BUILD_INFO.buildId}</span>
-                  )}
-                </a>
+                <div className="flex items-center gap-1">
+                  <Server className="h-3 w-3" />
+                  <span className="font-mono">{formatBuildTime(BUILD_INFO.buildTime)}</span>
+                </div>
               </TooltipTrigger>
               <TooltipContent>
-                <p>查看 GitHub 仓库</p>
+                <p>构建时间</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
-          <div className="flex items-center gap-3">
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <div className="flex items-center gap-1">
-                    <Server className="h-3 w-3" />
-                    <span className="font-mono">{formatBuildTime(BUILD_INFO.buildTime)}</span>
-                  </div>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>构建时间</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-            <div className="flex items-center gap-1">
-              <Clock className="h-3 w-3" />
-              <span className="font-mono">{serverTime}</span>
-            </div>
+          <div className="flex items-center gap-1">
+            <Clock className="h-3 w-3" />
+            <span className="font-mono">{serverTime}</span>
           </div>
         </div>
       </div>

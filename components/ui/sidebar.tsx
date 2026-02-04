@@ -1,8 +1,21 @@
 "use client";
 
 import * as React from "react";
-import { Slot } from "@radix-ui/react-slot";
-import { PanelLeftIcon } from "lucide-react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import {
+  LayoutDashboard,
+  CalendarDays,
+  ClipboardCheck,
+  Link2,
+  Calendar,
+  Clock,
+  Swords,
+  Settings,
+  PanelLeftIcon,
+  UserRound,
+  ArrowLeftRight,
+} from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -19,12 +32,25 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { useUser } from "@/components/user-provider";
 
 // Constants
 const SIDEBAR_WIDTH = 220;
-const SIDEBAR_COLLAPSED_WIDTH = 64;
+const SIDEBAR_COLLAPSED_WIDTH = 48;
 const SIDEBAR_COOKIE_NAME = "sidebar_state";
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
+
+// Navigation items
+const navItems = [
+  { title: "仪表盘", icon: LayoutDashboard, href: "/dashboard" },
+  { title: "今日", icon: CalendarDays, href: "/day" },
+  { title: "每日打卡", icon: ClipboardCheck, href: "/checkin" },
+  { title: "任务分配", icon: Link2, href: "/assign" },
+  { title: "月历", icon: Calendar, href: "/calendar" },
+  { title: "时钟", icon: Clock, href: "/clock" },
+  { title: "PK", icon: Swords, href: "/pk" },
+  { title: "设置", icon: Settings, href: "/settings" },
+];
 
 // Context
 type SidebarContextValue = {
@@ -104,39 +130,41 @@ export function SidebarProvider({
   );
 }
 
-// Sidebar
-export function Sidebar({ children }: { children: React.ReactNode }) {
-  const { expanded, isMobile, mobileOpen, setMobileOpen } = useSidebar();
+// Sidebar Trigger Button (only for mobile header)
+export function SidebarTrigger({ className }: { className?: string }) {
+  const { toggle, isMobile } = useSidebar();
 
-  // Mobile: Sheet overlay
-  if (isMobile) {
-    return (
-      <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-        <SheetContent side="left" className="w-[280px] p-0">
-          <SheetHeader className="sr-only">
-            <SheetTitle>导航菜单</SheetTitle>
-            <SheetDescription>应用导航菜单</SheetDescription>
-          </SheetHeader>
-          <nav className="flex h-full flex-col bg-sidebar text-sidebar-foreground">
-            {children}
-          </nav>
-        </SheetContent>
-      </Sheet>
-    );
-  }
+  // Only render on mobile - desktop has toggle in sidebar header
+  if (!isMobile) return null;
 
-  // Desktop: Fixed sidebar
   return (
-    <aside
-      className="fixed inset-y-0 left-0 z-30 flex flex-col border-r bg-sidebar text-sidebar-foreground transition-[width] duration-300 ease-in-out"
-      style={{ width: expanded ? SIDEBAR_WIDTH : SIDEBAR_COLLAPSED_WIDTH }}
+    <Button
+      variant="ghost"
+      size="icon"
+      className={cn("h-8 w-8", className)}
+      onClick={toggle}
     >
-      {children}
-    </aside>
+      <PanelLeftIcon className="h-4 w-4" />
+      <span className="sr-only">切换侧边栏</span>
+    </Button>
   );
 }
 
-// Spacer for main content
+// Header brand - shows "FireTime" when sidebar is collapsed
+export function SidebarHeaderBrand() {
+  const { expanded, isMobile } = useSidebar();
+
+  // Only show when desktop and collapsed
+  if (isMobile || expanded) return null;
+
+  return (
+    <Link href="/dashboard" className="font-bold text-sm hover:text-foreground/80 transition-colors">
+      FireTime
+    </Link>
+  );
+}
+
+// Sidebar Inset (main content wrapper)
 export function SidebarInset({ children }: { children: React.ReactNode }) {
   const { expanded, isMobile } = useSidebar();
 
@@ -152,240 +180,147 @@ export function SidebarInset({ children }: { children: React.ReactNode }) {
   );
 }
 
-// Trigger button
-export function SidebarTrigger({ className }: { className?: string }) {
-  const { toggle } = useSidebar();
+// Sidebar Navigation Content
+function SidebarNav({ onNavClick }: { onNavClick?: () => void }) {
+  const pathname = usePathname();
+  const { currentUser, otherUser, setCurrentUserId, currentUserId } = useUser();
+  const { expanded, isMobile, toggle } = useSidebar();
 
-  return (
-    <Button
-      variant="ghost"
-      size="icon"
-      className={cn("h-8 w-8", className)}
-      onClick={toggle}
-    >
-      <PanelLeftIcon className="h-4 w-4" />
-      <span className="sr-only">切换侧边栏</span>
-    </Button>
-  );
-}
-
-// Header
-export function SidebarHeader({
-  children,
-  className,
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return <div className={cn("flex flex-col", className)}>{children}</div>;
-}
-
-// Content (scrollable)
-export function SidebarContent({
-  children,
-  className,
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return (
-    <div className={cn("flex flex-1 flex-col overflow-y-auto overflow-x-hidden", className)}>
-      {children}
-    </div>
-  );
-}
-
-// Footer
-export function SidebarFooter({
-  children,
-  className,
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return <div className={cn("flex flex-col", className)}>{children}</div>;
-}
-
-// Separator
-export function SidebarSeparator({ className }: { className?: string }) {
-  return <div className={cn("mx-3 my-2 h-px bg-sidebar-border", className)} />;
-}
-
-// Group
-export function SidebarGroup({
-  children,
-  className,
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return <div className={cn("flex flex-col py-2", className)}>{children}</div>;
-}
-
-// Group Label
-export function SidebarGroupLabel({
-  children,
-  className,
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
-  const { expanded, isMobile } = useSidebar();
-  const showLabel = isMobile || expanded;
-
-  return (
-    <div
-      className={cn(
-        "overflow-hidden px-4 text-xs font-medium text-sidebar-foreground/60 transition-all duration-300",
-        showLabel ? "mb-1 h-6 opacity-100" : "h-0 opacity-0",
-        className
-      )}
-    >
-      {children}
-    </div>
-  );
-}
-
-// Group Content
-export function SidebarGroupContent({
-  children,
-  className,
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return <div className={cn("flex flex-col", className)}>{children}</div>;
-}
-
-// Menu
-export function SidebarMenu({
-  children,
-  className,
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return <ul className={cn("flex flex-col gap-1 px-2", className)}>{children}</ul>;
-}
-
-// Menu Item
-export function SidebarMenuItem({
-  children,
-  className,
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return <li className={cn("relative", className)}>{children}</li>;
-}
-
-// Menu Button - 核心组件，统一处理图标和文字
-export function SidebarMenuButton({
-  children,
-  asChild = false,
-  isActive = false,
-  tooltip,
-  className,
-  onClick,
-  ...props
-}: {
-  children: React.ReactNode;
-  asChild?: boolean;
-  isActive?: boolean;
-  tooltip?: string;
-  className?: string;
-  onClick?: () => void;
-} & Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, "children">) {
-  const { expanded, isMobile } = useSidebar();
-  const Comp = asChild ? Slot : "button";
-  const showTooltip = !isMobile && !expanded && tooltip;
   const isCollapsed = !isMobile && !expanded;
 
-  const button = (
-    <Comp
-      className={cn(
-        "group flex h-10 w-full items-center rounded-lg text-sm font-medium transition-all duration-200",
-        "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
-        isActive && "bg-sidebar-accent text-sidebar-accent-foreground",
-        // 折叠时居中，展开时左对齐带 padding
-        isCollapsed ? "justify-center px-0" : "justify-start gap-3 px-3",
-        className
-      )}
-      onClick={onClick}
-      {...props}
-    >
-      {children}
-    </Comp>
-  );
+  const switchUser = () => {
+    setCurrentUserId(currentUserId === "user1" ? "user2" : "user1");
+  };
 
-  if (showTooltip) {
+  // Helper to wrap element in Tooltip when collapsed
+  const withTooltip = (element: React.ReactElement, label: string) => {
+    if (!isCollapsed) return element;
     return (
       <Tooltip>
-        <TooltipTrigger asChild>{button}</TooltipTrigger>
-        <TooltipContent side="right" sideOffset={12}>
-          {tooltip}
+        <TooltipTrigger asChild>{element}</TooltipTrigger>
+        <TooltipContent side="right" sideOffset={8}>
+          {label}
         </TooltipContent>
       </Tooltip>
     );
+  };
+
+  return (
+    <nav className="flex h-full flex-col bg-sidebar text-sidebar-foreground">
+      {/* Header - h-14 aligns with top header bar */}
+      <div className="flex h-14 shrink-0 items-center border-b border-sidebar-border justify-center">
+        {withTooltip(
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={toggle}
+          >
+            <PanelLeftIcon className="h-4 w-4" />
+            <span className="sr-only">切换侧边栏</span>
+          </Button>,
+          "展开侧边栏"
+        )}
+      </div>
+
+      {/* Navigation */}
+      <div className="flex-1 overflow-y-auto overflow-x-hidden py-2">
+        <ul className="flex flex-col gap-0.5">
+          {navItems.map((item) => {
+            const isActive =
+              pathname === item.href ||
+              (item.href === "/day" && pathname.startsWith("/day/"));
+
+            const link = (
+              <Link
+                href={item.href}
+                onClick={onNavClick}
+                className={cn(
+                  "flex h-10 items-center text-sm font-medium transition-colors duration-200 mx-1 rounded-lg",
+                  "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
+                  isActive && "bg-sidebar-accent text-sidebar-accent-foreground",
+                  isCollapsed ? "justify-center px-0" : "px-3 gap-3"
+                )}
+              >
+                <item.icon className="h-5 w-5 shrink-0" />
+                {!isCollapsed && (
+                  <span className="truncate">{item.title}</span>
+                )}
+              </Link>
+            );
+
+            return <li key={item.href}>{withTooltip(link, item.title)}</li>;
+          })}
+        </ul>
+      </div>
+
+      {/* Separator */}
+      <div className="mx-2 h-px bg-sidebar-border" />
+
+      {/* Footer: User Switcher */}
+      <div className="shrink-0 py-2">
+        {withTooltip(
+          <button
+            onClick={switchUser}
+            className={cn(
+              "flex h-12 w-full items-center text-sm font-medium transition-colors duration-200 mx-1 rounded-lg",
+              "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
+              isCollapsed ? "justify-center px-0 w-auto" : "px-3 gap-3"
+            )}
+            style={{ width: isCollapsed ? "calc(100% - 8px)" : "calc(100% - 8px)" }}
+          >
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
+              <UserRound className="h-4 w-4" />
+            </span>
+            {!isCollapsed && (
+              <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
+                <span className="min-w-0 flex-1 text-left">
+                  <span className="block truncate text-sm font-medium">
+                    {currentUser?.name || "加载中..."}
+                  </span>
+                  <span className="block truncate text-xs text-muted-foreground">
+                    切换到 {otherUser?.name || "..."}
+                  </span>
+                </span>
+                <ArrowLeftRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+              </span>
+            )}
+          </button>,
+          `切换到 ${otherUser?.name || "..."}`
+        )}
+      </div>
+    </nav>
+  );
+}
+
+// Main Sidebar Component
+export function AppSidebar() {
+  const { expanded, isMobile, mobileOpen, setMobileOpen } = useSidebar();
+
+  // Mobile: Sheet drawer
+  if (isMobile) {
+    return (
+      <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
+        <SheetContent side="left" className="w-[280px] p-0" showCloseButton={false}>
+          <SheetHeader className="sr-only">
+            <SheetTitle>导航菜单</SheetTitle>
+            <SheetDescription>应用导航菜单</SheetDescription>
+          </SheetHeader>
+          <SidebarNav onNavClick={() => setMobileOpen(false)} />
+        </SheetContent>
+      </Sheet>
+    );
   }
 
-  return button;
-}
-
-// Menu Icon - 固定尺寸的图标容器
-export function SidebarMenuIcon({
-  children,
-  className,
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
+  // Desktop: Fixed sidebar
   return (
-    <span
-      className={cn(
-        "inline-flex h-5 w-5 shrink-0 items-center justify-center",
-        "[&>svg]:h-5 [&>svg]:w-5",
-        className
-      )}
+    <aside
+      className="fixed inset-y-0 left-0 z-30 border-r bg-sidebar text-sidebar-foreground transition-[width] duration-300 ease-in-out"
+      style={{ width: expanded ? SIDEBAR_WIDTH : SIDEBAR_COLLAPSED_WIDTH }}
     >
-      {children}
-    </span>
+      <SidebarNav />
+    </aside>
   );
 }
-
-// Menu Label - 可折叠的文字标签
-export function SidebarMenuLabel({
-  children,
-  className,
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
-  const { expanded, isMobile } = useSidebar();
-  const show = isMobile || expanded;
-
-  if (!show) return null;
-
-  return (
-    <span
-      className={cn(
-        "truncate whitespace-nowrap transition-opacity duration-200",
-        className
-      )}
-    >
-      {children}
-    </span>
-  );
-}
-
-// Deprecated exports for backward compatibility
-export const SidebarGroupAction = () => null;
-export const SidebarInput = () => null;
-export const SidebarMenuAction = () => null;
-export const SidebarMenuBadge = () => null;
-export const SidebarMenuSkeleton = () => null;
-export const SidebarMenuSub = () => null;
-export const SidebarMenuSubButton = () => null;
-export const SidebarMenuSubItem = () => null;
-export const SidebarRail = () => null;
