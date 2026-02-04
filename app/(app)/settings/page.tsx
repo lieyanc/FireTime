@@ -19,6 +19,8 @@ import {
   Lock,
   LockOpen,
   LogOut,
+  Camera,
+  User as UserIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -96,11 +98,11 @@ export default function SettingsPage() {
   const users = usersData?.users || [];
   const templates = templatesData?.templates || [];
 
-  const handleUserNameChange = async (id: string, name: string) => {
+  const handleUserProfileChange = async (id: string, name: string, avatar?: string) => {
     await fetch("/api/users", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, name }),
+      body: JSON.stringify({ id, name, avatar }),
     });
     mutate("/api/users");
   };
@@ -232,18 +234,18 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
-      {/* 用户名 */}
+      {/* 用户资料 */}
       <Card>
         <CardHeader>
-          <CardTitle>用户名称</CardTitle>
-          <CardDescription>编辑两位用户的显示名称</CardDescription>
+          <CardTitle>用户资料</CardTitle>
+          <CardDescription>编辑用户头像和显示名称</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {users.map((user) => (
-            <UserNameEditor
+            <UserProfileEditor
               key={user.id}
               user={user}
-              onSave={(name) => handleUserNameChange(user.id, name)}
+              onSave={(name, avatar) => handleUserProfileChange(user.id, name, avatar)}
             />
           ))}
         </CardContent>
@@ -366,53 +368,114 @@ export default function SettingsPage() {
   );
 }
 
-function UserNameEditor({
+function UserProfileEditor({
   user,
   onSave,
 }: {
   user: User;
-  onSave: (name: string) => void;
+  onSave: (name: string, avatar?: string) => void;
 }) {
   const [name, setName] = useState(user.name);
   const [isEditing, setIsEditing] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useState<HTMLInputElement | null>(null);
 
   const handleSave = () => {
     if (name.trim() && name !== user.name) {
-      onSave(name.trim());
+      onSave(name.trim(), user.avatar);
     }
     setIsEditing(false);
   };
 
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("userId", user.id);
+
+      const res = await fetch("/api/users/avatar", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        onSave(user.name, data.avatar);
+      }
+    } catch (error) {
+      console.error("Avatar upload failed:", error);
+    } finally {
+      setUploading(false);
+    }
+  };
+
   return (
-    <div className="flex items-center gap-3">
-      <Label className="w-16 text-muted-foreground">
-        {user.id === "user1" ? "用户 1" : "用户 2"}
-      </Label>
-      {isEditing ? (
-        <div className="flex-1 flex gap-2">
-          <Input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleSave()}
-            autoFocus
+    <div className="flex items-center gap-4">
+      {/* Avatar */}
+      <div className="relative group">
+        <div className="w-14 h-14 rounded-full bg-muted flex items-center justify-center overflow-hidden border-2 border-border">
+          {user.avatar ? (
+            <img
+              src={user.avatar}
+              alt={user.name}
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <UserIcon className="w-6 h-6 text-muted-foreground" />
+          )}
+        </div>
+        <label className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
+          {uploading ? (
+            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+          ) : (
+            <Camera className="w-4 h-4 text-white" />
+          )}
+          <input
+            type="file"
+            accept="image/*"
+            onChange={handleAvatarUpload}
+            className="hidden"
+            disabled={uploading}
           />
-          <Button size="sm" onClick={handleSave}>
-            保存
-          </Button>
-        </div>
-      ) : (
-        <div className="flex-1 flex items-center justify-between">
-          <span>{user.name}</span>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-            onClick={() => setIsEditing(true)}
-          >
-            <Edit2 className="h-4 w-4" />
-          </Button>
-        </div>
-      )}
+        </label>
+      </div>
+
+      {/* Name */}
+      <div className="flex-1">
+        <Label className="text-xs text-muted-foreground">
+          {user.id === "user1" ? "用户 1" : "用户 2"}
+        </Label>
+        {isEditing ? (
+          <div className="flex gap-2 mt-1">
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleSave()}
+              autoFocus
+              className="h-8"
+            />
+            <Button size="sm" onClick={handleSave}>
+              保存
+            </Button>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between mt-1">
+            <span className="font-medium">{user.name}</span>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => setIsEditing(true)}
+            >
+              <Edit2 className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

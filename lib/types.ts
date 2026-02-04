@@ -3,6 +3,7 @@ export type UserId = "user1" | "user2";
 export interface User {
   id: UserId;
   name: string;
+  avatar?: string; // 头像文件路径
 }
 
 export interface TimeBlock {

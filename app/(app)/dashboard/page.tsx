@@ -18,7 +18,6 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-  Clock,
   Flame,
   GraduationCap,
   BookOpen,
@@ -221,11 +220,12 @@ export default function DashboardPage() {
             {formatDisplayDate(today)}
           </span>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <Badge variant="outline" className="font-mono text-xs">
-            <Clock className="h-3 w-3 mr-1" />
+        <div className="flex-1 flex justify-center">
+          <span className="font-mono text-2xl font-semibold tabular-nums tracking-tight">
             {currentTime}
-          </Badge>
+          </span>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
           <Link href="/checkin">
             <Badge variant="default" className="cursor-pointer text-xs">
               每日打卡
