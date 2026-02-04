@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
+  Home,
   CalendarDays,
   ClipboardCheck,
   Link2,
@@ -154,13 +155,24 @@ export function SidebarTrigger({ className }: { className?: string }) {
 export function SidebarHeaderBrand() {
   const { expanded, isMobile } = useSidebar();
 
-  // Only show when desktop and collapsed
-  if (isMobile || expanded) return null;
+  // Mobile: show brand in header (sidebar is a Sheet)
+  // Desktop: only show when sidebar is collapsed (brand is shown in sidebar header when expanded)
+  if (!isMobile && expanded) return null;
 
   return (
-    <Link href="/dashboard" className="font-bold text-sm hover:text-foreground/80 transition-colors">
-      FireTime
-    </Link>
+    <div className="flex items-center gap-1">
+      <Button asChild variant="ghost" size="icon-sm" className="h-8 w-8">
+        <Link href="/dashboard" aria-label="主页">
+          <Home className="h-4 w-4" />
+        </Link>
+      </Button>
+      <Link
+        href="/dashboard"
+        className="text-xl font-semibold leading-none tracking-tight hover:text-foreground/80 transition-colors"
+      >
+        FireTime
+      </Link>
+    </div>
   );
 }
 
@@ -208,19 +220,39 @@ function SidebarNav({ onNavClick }: { onNavClick?: () => void }) {
   return (
     <nav className="flex h-full flex-col bg-sidebar text-sidebar-foreground">
       {/* Header - h-14 aligns with top header bar */}
-      <div className="flex h-14 shrink-0 items-center border-b border-sidebar-border justify-center">
+      <div className="flex h-14 shrink-0 items-center gap-1 border-b border-sidebar-border px-2">
         {withTooltip(
           <Button
             variant="ghost"
-            size="icon"
+            size="icon-sm"
             className="h-8 w-8"
             onClick={toggle}
           >
             <PanelLeftIcon className="h-4 w-4" />
             <span className="sr-only">切换侧边栏</span>
           </Button>,
-          "展开侧边栏"
+          expanded ? "收起侧边栏" : "展开侧边栏"
         )}
+
+        {/* Desktop expanded: brand to the right of the menu button */}
+        <div
+          className={cn(
+            "flex items-center overflow-hidden transition-all duration-300 ease-in-out",
+            isCollapsed ? "max-w-0 opacity-0 pointer-events-none" : "max-w-[220px] opacity-100"
+          )}
+        >
+          <Button asChild variant="ghost" size="icon-sm" className="h-8 w-8">
+            <Link href="/dashboard" aria-label="主页">
+              <Home className="h-4 w-4" />
+            </Link>
+          </Button>
+          <Link
+            href="/dashboard"
+            className="ml-1 text-xl font-semibold leading-none tracking-tight hover:text-foreground/80 transition-colors"
+          >
+            FireTime
+          </Link>
+        </div>
       </div>
 
       {/* Navigation */}
@@ -235,18 +267,24 @@ function SidebarNav({ onNavClick }: { onNavClick?: () => void }) {
               <Link
                 href={item.href}
                 onClick={onNavClick}
+                aria-label={item.title}
                 className={cn(
-                  "flex h-10 items-center text-sm font-medium transition-colors duration-200 mx-1 rounded-lg",
+                  "flex h-10 items-center text-sm font-medium transition-colors duration-200 mx-1 rounded-lg px-2.5",
                   "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
                   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
                   isActive && "bg-sidebar-accent text-sidebar-accent-foreground",
-                  isCollapsed ? "justify-center px-0" : "px-3 gap-3"
+                  "justify-start"
                 )}
               >
                 <item.icon className="h-5 w-5 shrink-0" />
-                {!isCollapsed && (
-                  <span className="truncate">{item.title}</span>
-                )}
+                <span
+                  className={cn(
+                    "truncate transition-all duration-300 ease-in-out",
+                    isCollapsed ? "ml-0 max-w-0 opacity-0" : "ml-3 max-w-[180px] opacity-100"
+                  )}
+                >
+                  {item.title}
+                </span>
               </Link>
             );
 
@@ -264,29 +302,32 @@ function SidebarNav({ onNavClick }: { onNavClick?: () => void }) {
           <button
             onClick={switchUser}
             className={cn(
-              "flex h-12 w-full items-center text-sm font-medium transition-colors duration-200 mx-1 rounded-lg",
+              "flex h-12 items-center text-sm font-medium transition-colors duration-200 mx-1 rounded-lg px-1",
               "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
-              isCollapsed ? "justify-center px-0 w-auto" : "px-3 gap-3"
+              "justify-start"
             )}
-            style={{ width: isCollapsed ? "calc(100% - 8px)" : "calc(100% - 8px)" }}
+            aria-label="切换用户"
           >
             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
               <UserRound className="h-4 w-4" />
             </span>
-            {!isCollapsed && (
-              <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
-                <span className="min-w-0 flex-1 text-left">
-                  <span className="block truncate text-sm font-medium">
-                    {currentUser?.name || "加载中..."}
-                  </span>
-                  <span className="block truncate text-xs text-muted-foreground">
-                    切换到 {otherUser?.name || "..."}
-                  </span>
+            <span
+              className={cn(
+                "flex min-w-0 flex-1 items-center justify-between gap-2 overflow-hidden transition-all duration-300 ease-in-out",
+                isCollapsed ? "ml-0 max-w-0 opacity-0" : "ml-3 max-w-[260px] opacity-100"
+              )}
+            >
+              <span className="min-w-0 flex-1 text-left">
+                <span className="block truncate text-sm font-medium">
+                  {currentUser?.name || "加载中..."}
                 </span>
-                <ArrowLeftRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                <span className="block truncate text-xs text-muted-foreground">
+                  切换到 {otherUser?.name || "..."}
+                </span>
               </span>
-            )}
+              <ArrowLeftRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+            </span>
           </button>,
           `切换到 ${otherUser?.name || "..."}`
         )}

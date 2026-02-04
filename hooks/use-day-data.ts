@@ -14,21 +14,65 @@ export function useDayData(date: string, userId: UserId) {
   const userData = dayData?.[userId];
 
   const updateSchedule = async (schedule: TimeBlock[]) => {
-    await fetch(`/api/schedules/${date}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId, schedule }),
-    });
-    mutate();
+    // Optimistically update local cache to avoid UI "refresh" while dragging.
+    mutate(
+      (current) => {
+        if (!current?.data) return current;
+        return {
+          ...current,
+          data: {
+            ...current.data,
+            [userId]: {
+              ...current.data[userId],
+              schedule,
+            },
+          },
+        };
+      },
+      { revalidate: false }
+    );
+
+    try {
+      const res = await fetch(`/api/schedules/${date}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId, schedule }),
+      });
+      if (!res.ok) throw new Error("Failed to update schedule");
+    } catch {
+      // Rollback by revalidating if the write fails.
+      mutate();
+    }
   };
 
   const updateTasks = async (tasks: Task[]) => {
-    await fetch(`/api/tasks/${date}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId, tasks }),
-    });
-    mutate();
+    mutate(
+      (current) => {
+        if (!current?.data) return current;
+        return {
+          ...current,
+          data: {
+            ...current.data,
+            [userId]: {
+              ...current.data[userId],
+              tasks,
+            },
+          },
+        };
+      },
+      { revalidate: false }
+    );
+
+    try {
+      const res = await fetch(`/api/tasks/${date}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId, tasks }),
+      });
+      if (!res.ok) throw new Error("Failed to update tasks");
+    } catch {
+      mutate();
+    }
   };
 
   return {

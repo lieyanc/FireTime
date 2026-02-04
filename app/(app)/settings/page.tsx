@@ -43,6 +43,13 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { HomeworkManager } from "@/components/homework-manager";
 import { ColorPicker } from "@/components/ui/color-picker";
 import { useSettings } from "@/hooks/use-settings";
@@ -583,7 +590,7 @@ function TemplateDialog({
           </Button>
         )}
       </DialogTrigger>
-      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+      <DialogContent className="max-h-[80vh] overflow-x-hidden overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>
             {initialData ? "编辑模板" : "新建时间表模板"}
@@ -608,60 +615,73 @@ function TemplateDialog({
               </Button>
             </div>
 
-            <div className="space-y-2 max-h-80 overflow-y-auto">
+            <div className="space-y-2">
               {blocks
+                .slice()
                 .sort((a, b) => a.startTime.localeCompare(b.startTime))
                 .map((block) => (
                   <div
                     key={block.id}
-                    className="flex items-center gap-2 p-2 border rounded"
+                    className="p-3 border rounded space-y-2"
                   >
                     <Input
-                      type="time"
-                      className="w-28"
-                      value={block.startTime}
-                      onChange={(e) =>
-                        handleBlockChange(block.id, "startTime", e.target.value)
-                      }
-                    />
-                    <span>-</span>
-                    <Input
-                      type="time"
-                      className="w-28"
-                      value={block.endTime}
-                      onChange={(e) =>
-                        handleBlockChange(block.id, "endTime", e.target.value)
-                      }
-                    />
-                    <Input
-                      className="flex-1"
                       value={block.label}
                       onChange={(e) =>
                         handleBlockChange(block.id, "label", e.target.value)
                       }
                       placeholder="名称"
                     />
-                    <select
-                      className="h-9 rounded-md border bg-background px-2 text-sm"
-                      value={block.category}
-                      onChange={(e) =>
-                        handleBlockChange(block.id, "category", e.target.value)
-                      }
-                    >
-                      {categories.map((cat) => (
-                        <option key={cat.value} value={cat.value}>
-                          {cat.label}
-                        </option>
-                      ))}
-                    </select>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="h-8 w-8 shrink-0"
-                      onClick={() => handleRemoveBlock(block.id)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="time"
+                          className="w-28"
+                          value={block.startTime}
+                          onChange={(e) =>
+                            handleBlockChange(block.id, "startTime", e.target.value)
+                          }
+                        />
+                        <span className="shrink-0 text-muted-foreground">-</span>
+                        <Input
+                          type="time"
+                          className="w-28"
+                          value={block.endTime}
+                          onChange={(e) =>
+                            handleBlockChange(block.id, "endTime", e.target.value)
+                          }
+                        />
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <Select
+                          value={block.category}
+                          onValueChange={(value) =>
+                            handleBlockChange(block.id, "category", value)
+                          }
+                        >
+                          <SelectTrigger className="w-28">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {categories.map((cat) => (
+                              <SelectItem key={cat.value} value={cat.value}>
+                                {cat.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-8 w-8 shrink-0"
+                          onClick={() => handleRemoveBlock(block.id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
                   </div>
                 ))}
               {blocks.length === 0 && (

@@ -64,36 +64,46 @@ function TimeRangeSelector({
   onStartChange: (time: string) => void;
   onEndChange: (time: string) => void;
 }) {
-  const startMinutes = getMinutesFromMidnight(startTime);
-  const endMinutes = getMinutesFromMidnight(endTime);
+  const [draftStartMinutes, setDraftStartMinutes] = useState(() =>
+    getMinutesFromMidnight(startTime)
+  );
+  const [draftEndMinutes, setDraftEndMinutes] = useState(() =>
+    getMinutesFromMidnight(endTime)
+  );
 
   return (
     <div className="space-y-3 p-1">
       <div className="space-y-1">
         <div className="flex justify-between text-xs">
           <span className="text-muted-foreground">开始</span>
-          <span className="font-mono font-medium">{startTime}</span>
+          <span className="font-mono font-medium">
+            {minutesToTime(draftStartMinutes)}
+          </span>
         </div>
         <Slider
-          value={[startMinutes]}
+          value={[draftStartMinutes]}
           min={0}
           max={1439}
           step={15}
-          onValueChange={([v]) => onStartChange(minutesToTime(v))}
+          onValueChange={([v]) => setDraftStartMinutes(v)}
+          onValueCommit={([v]) => onStartChange(minutesToTime(v))}
           className="w-full"
         />
       </div>
       <div className="space-y-1">
         <div className="flex justify-between text-xs">
           <span className="text-muted-foreground">结束</span>
-          <span className="font-mono font-medium">{endTime}</span>
+          <span className="font-mono font-medium">
+            {minutesToTime(draftEndMinutes)}
+          </span>
         </div>
         <Slider
-          value={[endMinutes]}
+          value={[draftEndMinutes]}
           min={0}
           max={1439}
           step={15}
-          onValueChange={([v]) => onEndChange(minutesToTime(v))}
+          onValueChange={([v]) => setDraftEndMinutes(v)}
+          onValueCommit={([v]) => onEndChange(minutesToTime(v))}
           className="w-full"
         />
       </div>
@@ -105,7 +115,11 @@ function TimeRangeSelector({
             size="sm"
             variant="outline"
             className="flex-1 h-6 text-xs"
-            onClick={() => onEndChange(minutesToTime(startMinutes + mins))}
+            onClick={() => {
+              const nextEnd = Math.min(draftStartMinutes + mins, 1439);
+              setDraftEndMinutes(nextEnd);
+              onEndChange(minutesToTime(nextEnd));
+            }}
           >
             {mins >= 60 ? `${mins / 60}h` : `${mins}m`}
           </Button>
