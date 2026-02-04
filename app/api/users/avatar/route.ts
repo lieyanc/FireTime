@@ -3,7 +3,24 @@ import { writeFile, mkdir } from "fs/promises";
 import { existsSync } from "fs";
 import path from "path";
 
-const AVATARS_DIR = path.join(process.cwd(), "public", "avatars");
+const AVATARS_DIR = path.join(process.cwd(), "data", "avatars");
+
+export const runtime = "nodejs";
+
+function extFromMime(mime: string) {
+  switch (mime) {
+    case "image/jpeg":
+      return "jpg";
+    case "image/png":
+      return "png";
+    case "image/gif":
+      return "gif";
+    case "image/webp":
+      return "webp";
+    default:
+      return null;
+  }
+}
 
 export async function POST(request: Request) {
   try {
@@ -16,8 +33,8 @@ export async function POST(request: Request) {
     }
 
     // Validate file type
-    const validTypes = ["image/jpeg", "image/png", "image/gif", "image/webp"];
-    if (!validTypes.includes(file.type)) {
+    const ext = extFromMime(file.type);
+    if (!ext) {
       return NextResponse.json({ error: "Invalid file type" }, { status: 400 });
     }
 
@@ -31,8 +48,6 @@ export async function POST(request: Request) {
       await mkdir(AVATARS_DIR, { recursive: true });
     }
 
-    // Get file extension
-    const ext = file.name.split(".").pop() || "png";
     const fileName = `${userId}.${ext}`;
     const filePath = path.join(AVATARS_DIR, fileName);
 
