@@ -1,5 +1,6 @@
 import useSWR from "swr";
 import type {
+  AppSettings,
   DailyTask,
   DailyCheckIn,
   DailyTaskList,
@@ -90,32 +91,26 @@ export function useDailyCheckIns(date: string) {
     if (delta === 0) return;
 
     const settingsRes = await fetch("/api/settings");
-    const { settings } = await settingsRes.json();
+    const { settings } = (await settingsRes.json()) as { settings?: AppSettings };
     if (!settings) return;
 
-    const newSubjects = settings.subjects.map((s: any) => {
-      if (s.id === subjectId) {
-        return {
-          ...s,
-          homework: s.homework.map((h: any) => {
-            if (h.id === homeworkId) {
-              // 确保 completedPages 是对象格式
-              const currentProgress = typeof h.completedPages === "object"
-                ? h.completedPages
-                : { user1: h.completedPages || 0, user2: 0 };
-              // 确保不会变成负数，也不会超过总量
-              const currentValue = currentProgress[userId] || 0;
-              const newValue = Math.max(0, Math.min(h.totalPages, currentValue + delta));
-              return {
-                ...h,
-                completedPages: { ...currentProgress, [userId]: newValue },
-              };
-            }
-            return h;
-          }),
-        };
-      }
-      return s;
+    const newSubjects = settings.subjects.map((subject) => {
+      if (subject.id !== subjectId) return subject;
+      return {
+        ...subject,
+        homework: subject.homework.map((homework) => {
+          if (homework.id !== homeworkId) return homework;
+          const currentValue = homework.completedPages[userId] || 0;
+          const newValue = Math.max(
+            0,
+            Math.min(homework.totalPages, currentValue + delta)
+          );
+          return {
+            ...homework,
+            completedPages: { ...homework.completedPages, [userId]: newValue },
+          };
+        }),
+      };
     });
 
     await fetch("/api/settings", {

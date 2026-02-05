@@ -8,10 +8,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 export default function CalendarPage() {
   const { currentUserId } = useUser();
-  const { allDays, isLoading } = useCalendarData();
-
   const [year, setYear] = useState(() => new Date().getFullYear());
   const [month, setMonth] = useState(() => new Date().getMonth());
+  const { allDays, isLoading } = useCalendarData(year, month);
 
   if (isLoading) {
     return (

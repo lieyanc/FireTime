@@ -150,19 +150,18 @@ export default function DashboardPage() {
     dayLoading || settingsLoading || todosLoading || checkInsLoading;
 
   // Computed
+  const vacationStartDate = settings?.vacation?.startDate;
+  const vacationEndDate = settings?.vacation?.endDate;
   const vacationInfo = useMemo(() => {
-    if (!settings?.vacation) return null;
-    return getVacationProgress(
-      settings.vacation.startDate,
-      settings.vacation.endDate,
-      today
-    );
-  }, [settings?.vacation, today]);
+    if (!vacationStartDate || !vacationEndDate) return null;
+    return getVacationProgress(vacationStartDate, vacationEndDate, today);
+  }, [vacationStartDate, vacationEndDate, today]);
 
+  const subjects = settings?.subjects;
   const homeworkInfo = useMemo(() => {
-    if (!settings?.subjects) return null;
-    return getSubjectProgress(settings.subjects, currentUserId);
-  }, [settings?.subjects, currentUserId]);
+    if (!subjects) return null;
+    return getSubjectProgress(subjects, currentUserId);
+  }, [subjects, currentUserId]);
 
   const schedule1 = dayData?.user1?.schedule || [];
   const schedule2 = dayData?.user2?.schedule || [];
@@ -175,12 +174,13 @@ export default function DashboardPage() {
     currentTime
   );
 
+  const exams = settings?.exams;
   const upcomingExams = useMemo(() => {
-    if (!settings?.exams) return [];
-    return settings.exams
+    if (!exams) return [];
+    return exams
       .filter((e) => e.date >= today)
       .sort((a, b) => a.date.localeCompare(b.date));
-  }, [settings?.exams, today]);
+  }, [exams, today]);
 
   const getExamDaysLeft = (examDate: string) => {
     const exam = parseDate(examDate);
@@ -190,9 +190,9 @@ export default function DashboardPage() {
     );
   };
 
-  const subjects = settings?.subjects || [];
-  const checkInTasks1 = filterDailyTasksForUser(checkInTasks, subjects, "user1");
-  const checkInTasks2 = filterDailyTasksForUser(checkInTasks, subjects, "user2");
+  const subjectsList = subjects || [];
+  const checkInTasks1 = filterDailyTasksForUser(checkInTasks, subjectsList, "user1");
+  const checkInTasks2 = filterDailyTasksForUser(checkInTasks, subjectsList, "user2");
 
   const checkIn1Count = checkInTasks1.filter((t) =>
     checkIns.user1.find((c) => c.taskId === t.id)?.completed
@@ -412,14 +412,14 @@ export default function DashboardPage() {
               tasks={checkInTasks1}
               checkIns={checkIns.user1}
               streak={streaks.user1}
-              subjects={subjects}
+              subjects={subjectsList}
             />
             <CheckInColumn
               user={user2}
               tasks={checkInTasks2}
               checkIns={checkIns.user2}
               streak={streaks.user2}
-              subjects={subjects}
+              subjects={subjectsList}
             />
           </div>
         </div>
@@ -887,12 +887,45 @@ function HomeworkGrid({
   onUpdateProgress: (subjectId: string, homeworkId: string, value: number, userId: UserId) => void;
 }) {
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
-  const [orderedSubjects, setOrderedSubjects] = useState(subjects);
 
-  // Sync with external subjects
-  useMemo(() => {
-    setOrderedSubjects(subjects);
-  }, [subjects]);
+  // Keep a local "manual" order only when the user drags to reorder.
+  // Otherwise, follow the incoming `subjects` order to stay in sync with updates.
+  const [manualOrder, setManualOrder] = useState<string[] | null>(null);
+
+  const orderedIds = useMemo(() => {
+    const subjectIds = subjects.map((s) => s.id);
+    const subjectIdSet = new Set(subjectIds);
+    const baseOrder = manualOrder ?? subjectIds;
+
+    const result: string[] = [];
+    const seen = new Set<string>();
+
+    for (const id of baseOrder) {
+      if (!seen.has(id) && subjectIdSet.has(id)) {
+        result.push(id);
+        seen.add(id);
+      }
+    }
+
+    for (const id of subjectIds) {
+      if (!seen.has(id)) {
+        result.push(id);
+        seen.add(id);
+      }
+    }
+
+    return result;
+  }, [manualOrder, subjects]);
+
+  const orderedSubjects = useMemo(() => {
+    const subjectById = new Map(subjects.map((s) => [s.id, s]));
+    const result: Subject[] = [];
+    for (const id of orderedIds) {
+      const subject = subjectById.get(id);
+      if (subject) result.push(subject);
+    }
+    return result;
+  }, [orderedIds, subjects]);
 
   const handleDragStart = (index: number) => {
     setDraggedIndex(index);
@@ -902,11 +935,10 @@ function HomeworkGrid({
     e.preventDefault();
     if (draggedIndex === null || draggedIndex === index) return;
 
-    const newSubjects = [...orderedSubjects];
-    const draggedItem = newSubjects[draggedIndex];
-    newSubjects.splice(draggedIndex, 1);
-    newSubjects.splice(index, 0, draggedItem);
-    setOrderedSubjects(newSubjects);
+    const newOrder = [...orderedIds];
+    const [draggedId] = newOrder.splice(draggedIndex, 1);
+    newOrder.splice(index, 0, draggedId);
+    setManualOrder(newOrder);
     setDraggedIndex(index);
   };
 

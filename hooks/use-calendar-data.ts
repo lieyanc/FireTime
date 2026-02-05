@@ -1,11 +1,19 @@
 import useSWR from "swr";
 import type { DayData, DayStatus, UserId } from "@/lib/types";
+import { formatDate } from "@/lib/dates";
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
-export function useCalendarData() {
+export function useCalendarData(year?: number, month?: number) {
+  const hasMonthRange = typeof year === "number" && typeof month === "number";
+  const monthFrom = hasMonthRange ? formatDate(new Date(year, month, 1)) : null;
+  const monthTo = hasMonthRange ? formatDate(new Date(year, month + 1, 0)) : null;
+  const key = hasMonthRange
+    ? `/api/days?from=${monthFrom}&to=${monthTo}`
+    : "/api/days";
+
   const { data, error, isLoading, mutate } = useSWR<{ data: DayData[] }>(
-    "/api/days",
+    key,
     fetcher
   );
 

@@ -9,7 +9,8 @@ import type {
   User,
   DailyTaskList,
   DailyCheckInData,
-  UserDailyCheckIns,
+  Subject,
+  HomeworkItem,
   UserId,
 } from "./types";
 
@@ -130,14 +131,21 @@ export function getSettings(): AppSettings {
     fs.writeFileSync(filePath, JSON.stringify(defaultSettings, null, 2));
     return defaultSettings;
   }
-  const settings = JSON.parse(fs.readFileSync(filePath, "utf-8")) as AppSettings;
+
+  type HomeworkItemFile = Omit<HomeworkItem, "completedPages"> & {
+    completedPages: HomeworkItem["completedPages"] | number;
+  };
+  type SubjectFile = Omit<Subject, "homework"> & { homework: HomeworkItemFile[] };
+  type AppSettingsFile = Omit<AppSettings, "subjects"> & { subjects: SubjectFile[] };
+
+  const settings = JSON.parse(fs.readFileSync(filePath, "utf-8")) as AppSettingsFile;
   // Migrate old data format: convert completedPages from number to object
   let needsSave = false;
   for (const subject of settings.subjects) {
     for (const hw of subject.homework) {
       if (typeof hw.completedPages === "number") {
         // Migrate: assign old value to user1, set user2 to 0
-        (hw as any).completedPages = { user1: hw.completedPages as unknown as number, user2: 0 };
+        hw.completedPages = { user1: hw.completedPages, user2: 0 };
         needsSave = true;
       }
     }
@@ -145,7 +153,7 @@ export function getSettings(): AppSettings {
   if (needsSave) {
     fs.writeFileSync(filePath, JSON.stringify(settings, null, 2));
   }
-  return settings;
+  return settings as unknown as AppSettings;
 }
 
 export function saveSettings(settings: AppSettings): void {
@@ -371,6 +379,60 @@ export function getAllCheckInDates(): string[] {
     .filter((f) => f.endsWith(".json"))
     .map((f) => f.replace(".json", ""))
     .sort();
+}
+
+export function getStreaks(
+  today: string,
+  options?: { tasks?: DailyTaskList; settings?: AppSettings }
+): { user1: number; user2: number } {
+  const tasks = options?.tasks ?? getDailyTasks();
+  const settings = options?.settings ?? getSettings();
+
+  const tasks1 = filterDailyTasksForUser(tasks.tasks, settings.subjects, "user1");
+  const tasks2 = filterDailyTasksForUser(tasks.tasks, settings.subjects, "user2");
+  const taskIdSet1 = new Set(tasks1.map((t) => t.id));
+  const taskIdSet2 = new Set(tasks2.map((t) => t.id));
+
+  const total1 = tasks1.length;
+  const total2 = tasks2.length;
+
+  let streak1 = 0;
+  let streak2 = 0;
+  let active1 = total1 > 0;
+  let active2 = total2 > 0;
+
+  const todayDate = new Date(today);
+  for (let i = 0; i < 365 && (active1 || active2); i++) {
+    const checkDate = new Date(todayDate);
+    checkDate.setDate(checkDate.getDate() - i);
+    const dateStr = checkDate.toISOString().split("T")[0];
+
+    const data = getDailyCheckIns(dateStr);
+
+    if (active1) {
+      const completed1 = data.checkIns.user1.filter(
+        (c) => c.completed && taskIdSet1.has(c.taskId)
+      ).length;
+      if (completed1 >= total1) {
+        streak1++;
+      } else if (i !== 0) {
+        active1 = false;
+      }
+    }
+
+    if (active2) {
+      const completed2 = data.checkIns.user2.filter(
+        (c) => c.completed && taskIdSet2.has(c.taskId)
+      ).length;
+      if (completed2 >= total2) {
+        streak2++;
+      } else if (i !== 0) {
+        active2 = false;
+      }
+    }
+  }
+
+  return { user1: streak1, user2: streak2 };
 }
 
 // 计算连续打卡天数

@@ -67,7 +67,6 @@ export default function SettingsPage() {
   const router = useRouter();
   const { theme, setTheme } = useTheme();
   const { currentUserId } = useUser();
-  const [mounted, setMounted] = useState(false);
   const [passwordStatus, setPasswordStatus] = useState<PasswordStatus | null>(null);
 
   const { data: usersData, isLoading: usersLoading } = useSWR<{ users: User[] }>(
@@ -79,10 +78,6 @@ export default function SettingsPage() {
   }>("/api/templates", fetcher);
 
   const { settings, isLoading: settingsLoading, updateSettings, updateSubjects } = useSettings();
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   // Load password status
   useEffect(() => {
@@ -522,16 +517,17 @@ function TemplateDialog({
   const [name, setName] = useState(initialData?.name || "");
   const [blocks, setBlocks] = useState<TimeBlock[]>(initialData?.blocks || []);
 
-  // Reset form when dialog opens with initialData
-  useEffect(() => {
-    if (open && initialData) {
+  const handleOpenChange = (nextOpen: boolean) => {
+    setOpen(nextOpen);
+    if (!nextOpen) return;
+    if (initialData) {
       setName(initialData.name);
       setBlocks(initialData.blocks);
-    } else if (open && !initialData) {
-      setName("");
-      setBlocks([]);
+      return;
     }
-  }, [open, initialData]);
+    setName("");
+    setBlocks([]);
+  };
 
   const handleAddBlock = () => {
     setBlocks([
@@ -581,7 +577,7 @@ function TemplateDialog({
   ];
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         {trigger || (
           <Button size="sm" variant="outline">
