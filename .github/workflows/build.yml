@@ -49,4 +49,4 @@ jobs:
         with:
           name: firetime-standalone
           path: firetime-standalone.tar.gz
-          retention-days: 30
+          retention-days: 3
