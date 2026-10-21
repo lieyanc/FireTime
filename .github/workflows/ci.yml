@@ -1,0 +1,48 @@
+name: CI
+
+# Pushes to master/main and tags are covered by release.yml.
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci --prefix web
+
+      - name: Lint frontend
+        run: npm run --prefix web lint
+
+      # The Go server embeds web/dist, so it must exist before vet/build.
+      - name: Build frontend
+        run: npm run --prefix web build
+
+      - name: Go vet
+        run: go vet ./...
+
+      - name: Go build
+        run: CGO_ENABLED=0 go build -o /dev/null ./cmd/firetime

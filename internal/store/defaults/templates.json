@@ -1,0 +1,19 @@
+[
+  {
+    "id": "default",
+    "name": "默认日程",
+    "isDefault": true,
+    "blocks": [
+      { "id": "1", "startTime": "07:00", "endTime": "08:00", "label": "起床洗漱", "category": "routine" },
+      { "id": "2", "startTime": "08:00", "endTime": "09:00", "label": "早餐", "category": "meal" },
+      { "id": "3", "startTime": "09:00", "endTime": "12:00", "label": "学习/工作", "category": "work" },
+      { "id": "4", "startTime": "12:00", "endTime": "13:00", "label": "午餐", "category": "meal" },
+      { "id": "5", "startTime": "13:00", "endTime": "14:00", "label": "午休", "category": "rest" },
+      { "id": "6", "startTime": "14:00", "endTime": "18:00", "label": "学习/工作", "category": "work" },
+      { "id": "7", "startTime": "18:00", "endTime": "19:00", "label": "晚餐", "category": "meal" },
+      { "id": "8", "startTime": "19:00", "endTime": "21:00", "label": "自由时间", "category": "free" },
+      { "id": "9", "startTime": "21:00", "endTime": "22:00", "label": "整理/准备睡觉", "category": "routine" },
+      { "id": "10", "startTime": "22:00", "endTime": "23:00", "label": "睡觉", "category": "sleep" }
+    ]
+  }
+]

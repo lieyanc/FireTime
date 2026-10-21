@@ -5,73 +5,63 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-npm run dev          # Start dev server (localhost:3010)
-npm run build        # Full production build
-npm run start        # Start production server (localhost:3010)
-npm run lint         # ESLint
-npx tsc --noEmit     # Fast type-check (preferred for validation)
+make build                       # Build UI (web/dist) + single binary (bin/firetime)
+make dev                         # Go backend on :9853, serving the UI in web/dist
+make dev-web                     # Vite dev server on localhost:3010, proxies /api + /avatars to :9853
+make lint                        # go vet + ESLint + tsc
+go vet ./... && go build ./...   # Fast backend check
+npm run --prefix web typecheck   # Fast frontend type-check
 ```
 
-Dev and production servers both run on port 3010.
-
-**Validation:** Use `npx tsc --noEmit` to quickly verify TypeScript compiles. It's faster than `npm run build`. Use `npm run build` only when you need to catch Next.js-specific issues (e.g., Server/Client Component boundary errors).
+The Go package `web` embeds `web/dist` (`//go:embed all:dist`); `web/dist/.gitkeep` must stay so the embed compiles before the UI is built.
 
 If type-check or build shows errors unrelated to your changes, they were likely introduced by another Claude Code instance or the user — ignore them and focus on your own work.
 
 ## Architecture
 
-FireTime is a dual-user vacation time management app built with Next.js 16 (App Router). Two users (user1, user2) each manage daily schedules, tasks, and todos, and can view each other's data.
+FireTime is a dual-user vacation time management app shipped as one Go binary with the React UI embedded. Two users (user1, user2) each manage daily schedules, tasks, and todos, and can view each other's data.
 
-### Data Storage
+### Backend (Go, standard library only)
 
-All data is persisted as JSON files on the local filesystem under `data/`. There is no database.
+- `cmd/firetime/main.go` — flags `-addr` (default `:9853`), `-data` (default `data`), `-debug`, `-v`
+- `internal/store/` — the single data access layer; JSON files under the data dir, one mutex, atomic writes
+  - Documents the frontend owns (settings, todos, days, templates…) are kept as raw JSON (`store.Object` = `map[string]json.RawMessage`) so unknown fields survive; only fields the server reasons about are decoded
+  - `defaults/*.json` seed global files on first access; a missing day file is created from the default template
+  - `auth.json` — unsalted SHA-256 password hashes (kept for compatibility with the old Node version) + sessions
+- `internal/server/` — REST handlers, auth middleware, embedded static file server (gzip + ETag, SPA fallback to index.html), avatars
 
-- `lib/store.ts` — the single data access layer; all reads/writes go through this file using Node.js `fs`
-- `data/days/YYYY-MM-DD.json` — per-day data (schedule + tasks for both users)
-- `data/users.json`, `settings.json`, `templates.json`, `todos.json` — global data
+The on-disk layout (`days/`, `checkins/`, `avatars/`, top-level JSON files) is identical to the former Next.js version.
 
-When a day file doesn't exist, `getDayData()` auto-creates it from the default schedule template.
+### API
 
-### API Layer
+- `GET/PUT /api/days/[date]`, `GET /api/days?from=&to=` — day data
+- `GET/PUT /api/schedules/[date]`, `/api/tasks/[date]` — one user's schedule/tasks within a day
+- `GET/PUT /api/checkins/[date]` — check-ins (GET also returns daily tasks + streaks)
+- `GET/PUT /api/todos`, `/api/settings`, `/api/daily-tasks`, `/api/users`; `POST /api/users/avatar`
+- `GET/POST/PUT/DELETE /api/templates`
+- `/api/auth/{login,logout,verify,password}`
 
-REST API routes under `app/api/` act as thin wrappers around `lib/store.ts`:
-- `GET/PUT /api/days/[date]` — day data
-- `PUT /api/schedules/[date]` — update one user's schedule within a day
-- `PUT /api/tasks/[date]` — update one user's tasks within a day
-- `GET/PUT /api/todos` — global todo list (independent of days)
-- `GET/PUT /api/settings` — app settings (vacation, subjects, exams)
-- `GET/PUT /api/templates` — schedule templates
-- `GET/PUT /api/users` — user names
+Auth: once any password is set, `/api/*` (except `/api/auth/*`) needs a valid `auth_token` session cookie (401 otherwise) and page loads redirect to `/login`. The frontend's fetch wrapper in `web/src/main.tsx` sends the user to `/login` on a 401.
 
-### Frontend Data Flow
+### Frontend (`web/`, Vite + React Router)
 
-- Custom hooks in `hooks/` use **SWR** to fetch from API routes and expose `mutate` functions
-- `useDayData(date, userId)` — schedule and tasks for a specific day/user
-- `useGlobalTodos()` — global todo list with add/cycle-status/delete
-- `useSettings()` — vacation, subjects, exams settings
-- `useCalendarData()` / `useWeekData()` — aggregated views
+- `web/src/router.tsx` — routes; `components/app-layout.tsx` is the sidebar layout (`<Outlet />`)
+- Hooks in `web/src/hooks/` use **SWR** against the API and expose mutate functions (`useDayData`, `useGlobalTodos`, `useSettings`, `useCalendarData`, `useWeekData`, `useDailyTasks`)
+- Providers (`main.tsx`): `ThemeProvider` (next-themes) → `UserProvider` (current user in localStorage, `useUser()`) → `RouterProvider`
+- **shadcn/ui** (new-york) + Radix in `web/src/components/ui/`, **Tailwind CSS 4** in `web/src/index.css`, **lucide-react** icons
+- Build info shown in the header comes from Vite `define` (`import.meta.env.VITE_COMMIT_ID` etc.)
 
-### Provider Hierarchy (app/layout.tsx)
+### Key Types (web/src/lib/types.ts)
 
-`ThemeProvider` (next-themes) → `UserProvider` (React Context for current user identity)
-
-Current user selection is stored in `localStorage` and exposed via `useUser()` hook. All `(app)/` pages are wrapped in a sidebar layout (`app/(app)/layout.tsx`).
-
-### UI
-
-- **shadcn/ui** (new-york style) with Radix UI primitives — components in `components/ui/`
-- **Tailwind CSS 4** — styles in `app/globals.css`
-- **lucide-react** for icons
-- shadcn CLI configured via `components.json` (aliases: `@/components`, `@/lib`, `@/hooks`)
-
-### Key Types (lib/types.ts)
-
-- `DayData` — contains `date`, `user1: UserDayData`, `user2: UserDayData`
-- `UserDayData` — contains `schedule: TimeBlock[]` and `tasks: Task[]`
-- `TimeBlock` — time range with label and category
-- `GlobalTodoItem` — status cycles: pending → in_progress → completed
-- `AppSettings` — vacation dates, subjects with homework tracking, exam countdowns
+- `DayData` — `date`, `user1: UserDayData`, `user2: UserDayData`; `UserDayData` — `schedule: TimeBlock[]`, `tasks: Task[]`
+- `GlobalTodoItem` — status cycles pending → in_progress → completed
+- `AppSettings` — vacation, subjects with per-user homework progress, exams
+- Daily task visibility per user follows `web/src/lib/daily-tasks.ts`; `internal/store/checkins.go` mirrors it for streaks — keep them in sync
 
 ### Date Conventions
 
-All dates use `YYYY-MM-DD` string format. All times use `HH:mm` string format. Utility functions in `lib/dates.ts`.
+All dates use `YYYY-MM-DD` strings (validated server-side), times use `HH:mm`. Helpers in `web/src/lib/dates.ts`.
+
+### Release
+
+`.github/workflows/release.yml` builds binaries for linux/darwin/windows; master pushes refresh the rolling `dev` prerelease, `v*` tags publish stable releases. `scripts/deploy.sh` downloads from those releases and verifies `SHA256SUMS`.

@@ -1,0 +1,10 @@
+{
+  "tasks": [
+    { "id": "dt-1", "title": "背单词", "target": 50, "unit": "词", "subjectId": "english", "homeworkId": "english-1" },
+    { "id": "dt-2", "title": "数学练习", "target": 2, "unit": "页", "subjectId": "math", "homeworkId": "math-1" },
+    { "id": "dt-3", "title": "语文阅读", "target": 1, "unit": "篇", "subjectId": "chinese", "homeworkId": "chinese-1" },
+    { "id": "dt-4", "title": "物理刷题", "target": 2, "unit": "页", "subjectId": "physics", "homeworkId": "physics-1" },
+    { "id": "dt-5", "title": "化学练习", "target": 1, "unit": "篇", "subjectId": "chemistry", "homeworkId": "chemistry-1" },
+    { "id": "dt-6", "title": "课外阅读", "target": 30, "unit": "分钟" }
+  ]
+}

@@ -2,23 +2,27 @@
 set -euo pipefail
 
 # FireTime 部署脚本
-# 用法: ./deploy.sh [--update-only | --run-only | --daemon]
-#   无参数: 自更新 → 下载最新构建 → 前台启动服务
-#   --update-only: 仅自更新脚本并下载构建产物，不启动服务
-#   --run-only: 仅启动已存在的构建产物（前台），不下载
-#   --daemon: 自更新 → 下载最新构建 → 后台启动服务
+# 用法: ./deploy.sh [--update-only | --run-only | --daemon | --stop]
+#   无参数: 自更新 → 下载最新二进制 → 前台启动服务
+#   --update-only: 仅自更新脚本并下载二进制，不启动服务
+#   --run-only: 仅启动已存在的二进制（前台），不下载
+#   --daemon: 自更新 → 下载最新二进制 → 后台启动服务
+#   --stop: 停止后台服务
+#
+# 环境变量:
+#   PORT / BIND_HOST  监听地址 (默认 0.0.0.0:9853)
+#   RELEASE_TAG       下载的 Release (默认 dev，即 master 最新构建；也可指定 v1.0.0 等)
 
 REPO="lieyanc/FireTime"
-ARTIFACT_NAME="firetime-standalone"
+RELEASE_TAG="${RELEASE_TAG:-dev}"
 SCRIPT_SOURCE_URL="https://raw.githubusercontent.com/${REPO}/master/scripts/deploy.sh"
 
-# 部署目录 = 脚本所在目录的父级（即项目根目录），或当前目录
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 DEPLOY_DIR="$(pwd)"
-APP_DIR="${DEPLOY_DIR}/app"
+BIN_PATH="${DEPLOY_DIR}/firetime"
 DATA_DIR="${DEPLOY_DIR}/data"
 PID_FILE="${DEPLOY_DIR}/firetime.pid"
 LOG_FILE="${DEPLOY_DIR}/firetime.log"
+VERSION_FILE="${DEPLOY_DIR}/.release-version"
 
 PORT="${PORT:-9853}"
 BIND_HOST="${BIND_HOST:-0.0.0.0}"
@@ -27,7 +31,6 @@ BIND_HOST="${BIND_HOST:-0.0.0.0}"
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
 NC='\033[0m'
 
 log()  { echo -e "${GREEN}[deploy]${NC} $*"; }
@@ -37,22 +40,38 @@ err()  { echo -e "${RED}[error]${NC} $*" >&2; }
 # ─── 前置检查 ───
 check_deps() {
   local missing=()
-  command -v gh   >/dev/null 2>&1 || missing+=(gh)
-  command -v node >/dev/null 2>&1 || missing+=(node)
-  command -v tar  >/dev/null 2>&1 || missing+=(tar)
-  command -v curl >/dev/null 2>&1 || missing+=(curl)
+  command -v curl      >/dev/null 2>&1 || missing+=(curl)
+  command -v sha256sum >/dev/null 2>&1 || command -v shasum >/dev/null 2>&1 || missing+=(sha256sum)
 
   if [ ${#missing[@]} -gt 0 ]; then
     err "缺少依赖: ${missing[*]}"
-    err "请先安装: gh (GitHub CLI), node (>= 20), tar, curl"
     exit 1
   fi
+}
 
-  # 检查 gh 是否已认证
-  if ! gh auth status >/dev/null 2>&1; then
-    err "gh 未登录，请先运行: gh auth login"
-    exit 1
+sha256() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | cut -d' ' -f1
+  else
+    shasum -a 256 "$1" | cut -d' ' -f1
   fi
+}
+
+# ─── 平台检测 ───
+asset_name() {
+  local os arch
+  case "$(uname -s)" in
+    Linux)  os=linux ;;
+    Darwin) os=darwin ;;
+    *) err "不支持的系统: $(uname -s)"; exit 1 ;;
+  esac
+  case "$(uname -m)" in
+    x86_64|amd64)  arch=amd64 ;;
+    aarch64|arm64) arch=arm64 ;;
+    riscv64)       arch=riscv64 ;;
+    *) err "不支持的架构: $(uname -m)"; exit 1 ;;
+  esac
+  echo "firetime-${os}-${arch}"
 }
 
 # ─── 自更新脚本 ───
@@ -63,11 +82,7 @@ self_update() {
   tmp_script="$(mktemp)"
 
   if curl -fsSL "${SCRIPT_SOURCE_URL}" -o "${tmp_script}" 2>/dev/null; then
-    local current_hash new_hash
-    current_hash="$(md5sum "$0" 2>/dev/null | cut -d' ' -f1 || md5 -q "$0" 2>/dev/null)"
-    new_hash="$(md5sum "${tmp_script}" 2>/dev/null | cut -d' ' -f1 || md5 -q "${tmp_script}" 2>/dev/null)"
-
-    if [ "${current_hash}" != "${new_hash}" ]; then
+    if [ "$(sha256 "$0")" != "$(sha256 "${tmp_script}")" ]; then
       log "发现新版本脚本，正在更新..."
       cp "${tmp_script}" "$0"
       chmod +x "$0"
@@ -91,7 +106,6 @@ stop_existing() {
     if kill -0 "${old_pid}" 2>/dev/null; then
       log "停止旧进程 (PID: ${old_pid})..."
       kill "${old_pid}" 2>/dev/null || true
-      # 等待进程退出
       local wait_count=0
       while kill -0 "${old_pid}" 2>/dev/null && [ ${wait_count} -lt 10 ]; do
         sleep 1
@@ -106,105 +120,83 @@ stop_existing() {
   fi
 }
 
-# ─── 下载最新构建产物 ───
-download_artifact() {
-  local version_file="${DEPLOY_DIR}/.artifact-version"
+# ─── 下载最新二进制 ───
+# 子 shell 函数体：退出时清理临时目录，失败时退出码传回主流程
+download_binary() (
+  local base="https://github.com/${REPO}/releases/download/${RELEASE_TAG}"
+  local asset
+  asset="$(asset_name)"
 
-  # 获取最新成功构建的 run_id
-  log "检查最新构建版本..."
-  local run_id
-  run_id="$(gh run list --repo "${REPO}" --workflow "build.yml" --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
-
-  if [ -z "${run_id}" ] || [ "${run_id}" = "null" ]; then
-    err "没有找到成功的构建，请确认 GitHub Actions 已运行"
-    exit 1
-  fi
-
-  # 检查是否需要更新
-  if [ -f "${version_file}" ] && [ -f "${APP_DIR}/server.js" ]; then
-    local local_version
-    local_version="$(cat "${version_file}")"
-    if [ "${local_version}" = "${run_id}" ]; then
-      log "构建产物已是最新版本 (#${run_id})，跳过下载"
-      return 0
-    fi
-  fi
-
-  log "从 GitHub Actions 下载构建 #${run_id}..."
-
+  log "检查最新版本 (${RELEASE_TAG})..."
   local tmp_dir
   tmp_dir="$(mktemp -d)"
+  trap 'rm -rf "${tmp_dir}"' EXIT
 
-  if ! gh run download "${run_id}" --repo "${REPO}" --name "${ARTIFACT_NAME}" --dir "${tmp_dir}"; then
+  if ! curl -fsSL "${base}/SHA256SUMS" -o "${tmp_dir}/SHA256SUMS"; then
+    err "获取 ${RELEASE_TAG} 的 SHA256SUMS 失败，请确认 GitHub Actions 已发布该 Release"
+    exit 1
+  fi
+  local expected
+  expected="$(awk -v f="${asset}" '$2 == f { print $1 }' "${tmp_dir}/SHA256SUMS")"
+  if [ -z "${expected}" ]; then
+    err "Release ${RELEASE_TAG} 中没有 ${asset}"
+    exit 1
+  fi
+
+  if [ -x "${BIN_PATH}" ] && [ "$(sha256 "${BIN_PATH}")" = "${expected}" ]; then
+    log "二进制已是最新版本，跳过下载"
+    return 0
+  fi
+
+  log "下载 ${asset}..."
+  if ! curl -fSL --progress-bar "${base}/${asset}" -o "${tmp_dir}/${asset}"; then
     err "下载失败"
-    rm -rf "${tmp_dir}"
+    exit 1
+  fi
+  if [ "$(sha256 "${tmp_dir}/${asset}")" != "${expected}" ]; then
+    err "SHA256 校验失败"
     exit 1
   fi
 
-  # 查找 tarball
-  local tarball
-  tarball="$(find "${tmp_dir}" -name '*.tar.gz' -type f | head -1)"
+  chmod +x "${tmp_dir}/${asset}"
+  mv -f "${tmp_dir}/${asset}" "${BIN_PATH}"
+  curl -fsSL "${base}/version.json" -o "${VERSION_FILE}" 2>/dev/null || true
+  log "已更新: $("${BIN_PATH}" -v)"
 
-  if [ -z "${tarball}" ]; then
-    err "下载的产物中未找到 tar.gz 文件"
-    rm -rf "${tmp_dir}"
+  if [ -d "${DEPLOY_DIR}/app" ]; then
+    warn "检测到旧版 Node.js 构建目录 ${DEPLOY_DIR}/app，已不再使用，确认后可手动删除"
+  fi
+)
+
+require_binary() {
+  if [ ! -x "${BIN_PATH}" ]; then
+    err "${BIN_PATH} 不存在，请先下载 (./deploy.sh --update-only)"
     exit 1
   fi
-
-  # 解压到 app 目录
-  log "解压构建产物到 ${APP_DIR}..."
-  rm -rf "${APP_DIR}"
-  mkdir -p "${APP_DIR}"
-  tar -xzf "${tarball}" -C "${APP_DIR}"
-
-  # 保存版本号
-  echo "${run_id}" > "${version_file}"
-
-  rm -rf "${tmp_dir}"
-  log "构建产物已就绪"
 }
 
 # ─── 启动服务（前台） ───
 start_server() {
-  if [ ! -f "${APP_DIR}/server.js" ]; then
-    err "${APP_DIR}/server.js 不存在，请先下载构建产物"
-    exit 1
-  fi
-
+  require_binary
   stop_existing
-
-  # 确保 data 目录存在，并软链接到 app 内部
   mkdir -p "${DATA_DIR}"
-  ln -sfn "${DATA_DIR}" "${APP_DIR}/data"
 
   log "启动 FireTime (port: ${PORT})..."
-  cd "${APP_DIR}"
-  exec env PORT="${PORT}" HOSTNAME="${BIND_HOST}" node server.js
+  exec "${BIN_PATH}" -addr "${BIND_HOST}:${PORT}" -data "${DATA_DIR}"
 }
 
 # ─── 启动服务（后台） ───
 start_server_daemon() {
-  if [ ! -f "${APP_DIR}/server.js" ]; then
-    err "${APP_DIR}/server.js 不存在，请先下载构建产物"
-    exit 1
-  fi
-
+  require_binary
   stop_existing
-
-  # 确保 data 目录存在，并软链接到 app 内部
   mkdir -p "${DATA_DIR}"
-  ln -sfn "${DATA_DIR}" "${APP_DIR}/data"
 
   log "启动 FireTime (port: ${PORT}, 后台模式)..."
-
-  cd "${APP_DIR}"
-  PORT="${PORT}" HOSTNAME="${BIND_HOST}" nohup node server.js > "${LOG_FILE}" 2>&1 &
+  nohup "${BIN_PATH}" -addr "${BIND_HOST}:${PORT}" -data "${DATA_DIR}" > "${LOG_FILE}" 2>&1 &
   local new_pid=$!
   echo "${new_pid}" > "${PID_FILE}"
-  cd - > /dev/null
 
-  # 等待启动
-  sleep 2
+  sleep 1
   if kill -0 "${new_pid}" 2>/dev/null; then
     log "FireTime 已启动 (PID: ${new_pid})"
     log "地址: http://${BIND_HOST}:${PORT}"
@@ -220,20 +212,20 @@ start_server_daemon() {
 main() {
   local mode="${1:-full}"
 
-  check_deps
-
   case "${mode}" in
     --update-only)
+      check_deps
       self_update "$@"
-      download_artifact
+      download_binary
       log "已更新完成（未启动服务）"
       ;;
     --run-only)
       start_server
       ;;
     --daemon)
+      check_deps
       self_update "$@"
-      download_artifact
+      download_binary
       start_server_daemon
       ;;
     --stop)
@@ -241,8 +233,9 @@ main() {
       log "服务已停止"
       ;;
     *)
+      check_deps
       self_update "$@"
-      download_artifact
+      download_binary
       start_server
       ;;
   esac

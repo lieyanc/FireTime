@@ -1,184 +1,123 @@
 # FireTime
 
-一个双人时间管理应用，帮助两位用户管理每日日程、待办事项、作业进度和考试倒计时。
+A two-person vacation time manager: two users each keep a daily schedule, todos, homework progress and exam countdowns, and can see each other's.
 
-## 功能特性
+## Features
 
-- **双人日程管理** — 两位用户各自维护独立的每日时间表，可互相查看
-- **待办事项** — 支持待办状态循环（待做 → 进行中 → 已完成）
-- **假期进度** — 可视化假期剩余天数
-- **作业跟踪** — 按学科管理作业完成进度
-- **考试倒计时** — 追踪重要考试日期
-- **日程模板** — 新建日程时自动应用默认模板
-- **日历视图** — 按月查看历史日程完成情况
-- **沉浸时钟** — 专注模式时钟界面
+- **Dual schedules** — each user keeps their own daily timeline and can view the other's
+- **Todos** — status cycles pending → in progress → completed
+- **Vacation progress** — days left at a glance
+- **Homework tracking** — per-subject progress, per user
+- **Daily check-ins** — fixed daily tasks with streaks and a head-to-head PK view
+- **Exam countdowns**
+- **Schedule templates** — new days start from the default template
+- **Calendar view** and an **immersive clock**
+- Optional per-user **password protection**
 
-## 技术栈
+## Tech Stack
 
-- **框架**: Next.js 16 (App Router)
-- **语言**: TypeScript
-- **样式**: Tailwind CSS 4
-- **UI 组件**: Radix UI + shadcn/ui
-- **数据获取**: SWR
-- **数据存储**: JSON 文件（本地文件系统）
+- **Backend**: Go (standard library only), shipped as a single static binary with the UI embedded via `go:embed`
+- **Frontend**: React 19 + Vite + React Router, TypeScript
+- **UI**: Tailwind CSS 4, shadcn/ui (Radix UI), lucide-react
+- **Data fetching**: SWR
+- **Storage**: JSON files on the local filesystem (`data/`)
 
-## 快速开始
+## Quick Start
 
-### 环境要求
-
-- Node.js 20+
-- npm / pnpm / yarn
-
-### 安装
+Download the binary for your platform from [Releases](https://github.com/lieyanc/FireTime/releases) (`dev` is the latest master build) and run it:
 
 ```bash
-git clone <repo-url>
-cd FireTime
-npm install
+./firetime -addr :9853 -data ./data
 ```
 
-### 开发
+Open http://localhost:9853. Default data is created on first run.
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `-addr` | `:9853` | Listen address |
+| `-data` | `data` | Data directory |
+| `-debug` | `false` | Log every API request |
+| `-v` | | Print version and exit |
+
+## Development
+
+Requirements: Go 1.26+, Node.js 24+.
 
 ```bash
-npm run dev
+make build      # Build the UI into web/dist and the binary into bin/firetime
+make run        # Build everything, then run on :9853
+make dev        # Run the backend (serves the UI currently in web/dist)
+make dev-web    # Vite dev server on http://localhost:3010, proxies /api to the backend
+make lint       # go vet + ESLint + TypeScript
 ```
 
-打开 http://localhost:3000 访问应用。
+For hot reload, run `make dev` and `make dev-web` side by side and open http://localhost:3010.
 
-### 构建
-
-```bash
-npm run build
-npm run start
-```
-
-## 项目结构
+## Project Structure
 
 ```
 FireTime/
-├── app/                    # Next.js App Router 页面
-│   ├── api/                # API 路由
-│   │   ├── days/[date]/    # 日数据 CRUD
-│   │   ├── todos/          # 待办事项
-│   │   ├── settings/       # 应用设置
-│   │   ├── templates/      # 日程模板
-│   │   └── users/          # 用户信息
-│   └── (app)/              # 页面路由组
-│       ├── dashboard/      # 主面板
-│       ├── day/[date]/     # 单日详情
-│       ├── calendar/       # 日历视图
-│       ├── clock/          # 沉浸时钟
-│       ├── pk/             # 双人对比
-│       ├── assign/         # 任务分配
-│       └── settings/       # 设置
-├── components/             # React 组件
-│   └── ui/                 # shadcn/ui 基础组件
-├── hooks/                  # 自定义 Hooks
-├── lib/                    # 工具函数和类型
-│   ├── store.ts            # 数据存储层
-│   ├── types.ts            # TypeScript 类型定义
-│   ├── dates.ts            # 日期工具函数
-│   └── utils.ts            # 通用工具
-└── data/                   # 数据存储目录
-    ├── users.json          # 用户信息
-    ├── settings.json       # 应用设置
-    ├── templates.json      # 日程模板
-    ├── todos.json          # 全局待办
-    └── days/               # 每日数据
-        └── YYYY-MM-DD.json
+├── cmd/firetime/           # Binary entry point
+├── internal/
+│   ├── server/             # HTTP API, auth middleware, embedded static files, avatars
+│   ├── store/              # JSON-file data layer (defaults/ holds first-run data)
+│   └── version/            # Build metadata injected via -ldflags
+├── web/                    # Frontend (Vite)
+│   ├── embed.go            # Embeds web/dist into the binary
+│   ├── public/             # Static files copied as-is
+│   └── src/
+│       ├── pages/          # Route pages
+│       ├── components/     # React components (ui/ = shadcn/ui)
+│       ├── hooks/          # SWR data hooks
+│       ├── lib/            # Types and date/util helpers
+│       └── router.tsx      # Routes
+└── scripts/deploy.sh       # Server deploy/update script
 ```
 
-## 数据存储
+## Data Storage
 
-应用使用 JSON 文件作为数据库，所有数据存储在 `data/` 目录下：
+All data lives as JSON under the data directory:
 
-| 文件 | 说明 |
-|------|------|
-| `users.json` | 用户名称配置 |
-| `settings.json` | 假期、学科、考试设置 |
-| `templates.json` | 日程模板 |
-| `todos.json` | 双人待办事项 |
-| `days/*.json` | 每日日程和任务数据 |
+| File | Contents |
+|------|----------|
+| `users.json` | User names, avatars, colors |
+| `settings.json` | Vacation, subjects/homework, exams, motto |
+| `templates.json` | Schedule templates |
+| `todos.json` | Both users' todos |
+| `daily-tasks.json` | Fixed daily check-in tasks |
+| `auth.json` | Password hashes and sessions |
+| `days/YYYY-MM-DD.json` | Per-day schedules and tasks |
+| `checkins/YYYY-MM-DD.json` | Per-day check-ins and homework progress |
+| `avatars/` | Uploaded avatars |
 
-首次运行时会自动生成默认数据。
+The layout is unchanged from the earlier Next.js version, so an existing `data/` directory works as-is.
 
-## 部署
+## Deployment
 
-### 方式一：GitHub Actions 自动构建（推荐）
+Every push to master publishes a rolling `dev` prerelease; `v*` tags publish stable releases. Each release has binaries for Linux, macOS and Windows plus `SHA256SUMS`.
 
-项目配置了 GitHub Actions 自动编译 standalone 版本，服务器只需拉取构建产物即可运行。
-
-**首次部署：**
+`scripts/deploy.sh` downloads the right binary for the server, verifies its checksum and runs it, keeping data in `./data`:
 
 ```bash
-# 下载部署脚本
-mkdir -p /opt/firetime-deploy && cd /opt/firetime-deploy
+mkdir -p /opt/firetime && cd /opt/firetime
 curl -fsSL -o deploy.sh https://raw.githubusercontent.com/lieyanc/FireTime/master/scripts/deploy.sh
 chmod +x deploy.sh
 
-# 运行配置向导
-./deploy.sh
+./deploy.sh               # Update and run in the foreground
+./deploy.sh --daemon      # Update and run in the background
+./deploy.sh --update-only # Update only
+./deploy.sh --run-only    # Run the current binary
+./deploy.sh --stop        # Stop the background process
 ```
 
-> 💡 中国大陆用户使用加速地址：
+Environment variables: `PORT` (default `9853`), `BIND_HOST` (default `0.0.0.0`), `RELEASE_TAG` (default `dev`, e.g. `v1.0.0`).
+
+> Users in mainland China can fetch the script through a mirror:
 > ```bash
 > curl -fsSL -o deploy.sh https://gh-proxy.org/https://raw.githubusercontent.com/lieyanc/FireTime/master/scripts/deploy.sh
 > ```
 
-**后续更新：**
-
-```bash
-./deploy.sh          # 手动更新
-./deploy.sh check    # 检查是否有新版本
-./deploy.sh auto     # 静默自动更新（适合 cron/面板）
-```
-
-**面板/cron 集成：**
-
-```bash
-# 国际
-curl -fsSL https://raw.githubusercontent.com/lieyanc/FireTime/master/scripts/bootstrap.sh | bash
-
-# 中国大陆加速
-curl -fsSL https://gh-proxy.org/https://raw.githubusercontent.com/lieyanc/FireTime/master/scripts/bootstrap.sh | bash
-```
-
-### 方式二：手动构建
-
-```bash
-npm install
-npm run build
-npm run start
-```
-
-使用 PM2 保持进程：
-
-```bash
-pm2 start npm --name firetime -- start
-```
-
-### 方式三：Docker
-
-```dockerfile
-FROM node:20-alpine
-WORKDIR /app
-COPY package*.json ./
-RUN npm ci
-COPY . .
-RUN npm run build
-EXPOSE 3000
-CMD ["npm", "start"]
-```
-
-运行时挂载数据目录：
-
-```bash
-docker run -v /path/to/data:/app/data -p 3000:3000 firetime
-```
-
-### 注意事项
-
-由于使用文件系统存储数据，**不支持部署到 Vercel/Netlify 等 Serverless 平台**（文件系统只读或临时）。如需部署到这些平台，需要将 `lib/store.ts` 改为使用数据库（如 SQLite、PostgreSQL、Redis 等）。
+Behind an HTTPS reverse proxy, forward `X-Forwarded-Proto` so the session cookie is marked `Secure`.
 
 ## License
 
