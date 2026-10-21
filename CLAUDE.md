@@ -64,4 +64,4 @@ All dates use `YYYY-MM-DD` strings (validated server-side), times use `HH:mm`. H
 
 ### Release
 
-`.github/workflows/release.yml` builds binaries for linux/darwin/windows; master pushes refresh the rolling `dev` prerelease, `v*` tags publish stable releases. `scripts/deploy.sh` downloads from those releases and verifies `SHA256SUMS`.
+`.github/workflows/release.yml` builds binaries for linux/darwin/windows; master pushes refresh the rolling `dev` prerelease, `v*` tags publish stable releases.
